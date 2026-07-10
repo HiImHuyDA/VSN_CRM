@@ -7,7 +7,7 @@ export default function Header() {
       <div className="header-inner">
         <NavLink to="/" className="header-logo">
           <div className="header-logo-icon">🤝</div>
-          <span>CSR Reception</span>
+          <span>CRM VietSun</span>
         </NavLink>
         <nav className="header-nav">
           <NavLink

@@ -175,40 +175,6 @@ export default function SubmissionDrawer({ projectId, onClose, currentUser }) {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Tự động mở Modal phê duyệt/từ chối nếu nhận được action từ URL (ví dụ click nút từ Teams Card)
-  useEffect(() => {
-    if (data && viewedProjectId && currentUser) {
-      const searchParams = new URLSearchParams(window.location.search);
-      const action = searchParams.get('action');
-      if (action === 'approve' || action === 'reject') {
-        const status = data?.project?.Status;
-        const role = currentUser?.role;
-        let allowed = false;
-        
-        if (role === 'Admin') {
-          allowed = ['Chờ phản hồi', 'PRD đã duyệt'].includes(status);
-        } else if (role === 'PRD') {
-          allowed = ['Chờ phản hồi'].includes(status);
-        } else if (role === 'BOD') {
-          allowed = status === 'PRD đã duyệt';
-        }
-
-        if (allowed) {
-          setActiveTab('approval');
-          setModalMode(action);
-          
-          // Xóa query parameter action khỏi URL để tránh trigger lại khi chuyển tab hoặc refresh
-          const newParams = new URLSearchParams(window.location.search);
-          newParams.delete('action');
-          const newSearch = newParams.toString();
-          window.history.replaceState(null, '', `${window.location.pathname}${newSearch ? '?' + newSearch : ''}`);
-        } else {
-          toast.error(`Bạn không có quyền hoặc trạng thái đơn hiện tại (${status}) không phù hợp để thực hiện thao tác này.`);
-        }
-      }
-    }
-  }, [data, viewedProjectId, currentUser]);
-
   // Update activeTaskDate when tasks load
   useEffect(() => {
     if (data?.tasks?.length > 0) {

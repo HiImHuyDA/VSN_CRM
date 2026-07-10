@@ -44,8 +44,6 @@ module.exports = {
         FRONTEND_URL: process.env.FRONTEND_URL,
         BACKEND_URL: process.env.BACKEND_URL,
         UPLOAD_DIR: process.env.UPLOAD_DIR,
-        // Teams
-        TEAMS_WEBHOOK_BOD_URL: process.env.TEAMS_WEBHOOK_BOD_URL,
         // Python
         PYTHON_PATH: process.env.PYTHON_PATH,
       }

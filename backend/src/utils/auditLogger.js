@@ -8,7 +8,7 @@ async function logAuditAction(actionName, mnv, detail, projectId) {
     // Query Role and Department of the actor by MNV
     let role = null;
     let dept = null;
-    if (mnv && mnv !== 'TEAMS_SYSTEM') {
+    if (mnv && mnv !== 'TEAMS_BOD') {
       const userRes = await pool.request()
         .input('MNV', sql.NVarChar(50), mnv)
         .query('SELECT Role, Department FROM CSR_Users WHERE MNV = @MNV');
@@ -16,7 +16,7 @@ async function logAuditAction(actionName, mnv, detail, projectId) {
         role = userRes.recordset[0].Role;
         dept = userRes.recordset[0].Department;
       }
-    } else if (mnv === 'TEAMS_SYSTEM') {
+    } else if (mnv === 'TEAMS_BOD') {
       role = 'BOD';
     }
 

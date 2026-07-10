@@ -128,7 +128,7 @@ export default function CustomerEvaluation() {
             Ý kiến đóng góp quý báu của Quý khách đã được gửi về hệ thống của chúng tôi để không ngừng hoàn thiện và nâng cao chất lượng dịch vụ đón tiếp.
           </p>
           <div className="pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-400 font-semibold">CSR CRM &copy; {new Date().getFullYear()}</p>
+            <p className="text-xs text-slate-400 font-semibold">CRM VietSun &copy; {new Date().getFullYear()}</p>
           </div>
         </div>
       </div>

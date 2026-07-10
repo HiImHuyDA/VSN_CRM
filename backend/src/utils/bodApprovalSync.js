@@ -30,7 +30,7 @@ async function getSharePointSiteId(accessToken) {
 
 /**
  * Đẩy yêu cầu duyệt của BOD vào SharePoint List hàng đợi CSR_BOD_Approval_Queue
- * Thay thế cho việc gửi Teams Webhook Adaptive Card cũ.
+ * để kích hoạt Power Automate → Teams Approvals.
  */
 async function sendBODApprovalToSharePointQueue(submission, pool) {
   try {
