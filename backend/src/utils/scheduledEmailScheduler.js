@@ -6,7 +6,7 @@ const { sendApprovalEmail, handleProjectEditNotification } = require('./approval
  */
 function startScheduledEmailScheduler() {
   console.log('[Scheduled Email Scheduler] ⏰ Registered. Checking every minute...');
-  
+
   // Chạy lần đầu tiên sau khi khởi động server 30 giây
   setTimeout(() => {
     processScheduledEmails().catch(err => {
@@ -29,24 +29,24 @@ function startScheduledEmailScheduler() {
  */
 async function processScheduledEmails() {
   const pool = await getCsrPool();
-  
+
   // 1. Quét các email Pending có SendAt nhỏ hơn hoặc bằng thời điểm hiện tại
   const res = await pool.request().query(`
     SELECT * FROM CSR_ScheduledEmails
     WHERE Status = 'Pending' AND SendAt <= GETDATE()
   `);
-  
+
   const emailsToSend = res.recordset || [];
   if (emailsToSend.length === 0) {
     return;
   }
-  
+
   console.log(`[Scheduled Email Scheduler] Found ${emailsToSend.length} scheduled email(s) to process.`);
-  
+
   for (const email of emailsToSend) {
     try {
       console.log(`[Scheduled Email Scheduler] Processing email ID ${email.Id} (Project: ${email.ProjectId}, Type: ${email.EmailType})`);
-      
+
       // 2. Lấy thông tin chi tiết đơn + tasks qua usp_Submission_GetDetail
       const detailRes = await pool.request()
         .input('ProjectId', sql.NVarChar(100), email.ProjectId)
@@ -76,29 +76,23 @@ async function processScheduledEmails() {
       } else {
         await sendApprovalEmail(project, activeTasks, pool);
       }
-      
+
       // 4. Cập nhật trạng thái thành công
       await pool.request()
         .input('Id', sql.Int, email.Id)
-        .query(`
-          UPDATE CSR_ScheduledEmails
-          SET Status = 'Sent', SentAt = GETDATE(), UpdatedAt = GETDATE()
-          WHERE Id = @Id
-        `);
+        .input('Status', sql.NVarChar(50), 'Sent')
+        .execute('usp_UpdateScheduledEmailStatus');
       console.log(`[Scheduled Email Scheduler] ✅ Successfully sent email ID ${email.Id}`);
-      
+
     } catch (err) {
       console.error(`[Scheduled Email Scheduler] ❌ Failed to send email ID ${email.Id}:`, err.message);
-      
+
       // Cập nhật trạng thái thất bại và lưu lỗi
       await pool.request()
         .input('Id', sql.Int, email.Id)
-        .input('Err', sql.NVarChar(sql.MAX), err.message)
-        .query(`
-          UPDATE CSR_ScheduledEmails
-          SET Status = 'Failed', ErrorMessage = @Err, UpdatedAt = GETDATE()
-          WHERE Id = @Id
-        `);
+        .input('Status', sql.NVarChar(50), 'Failed')
+        .input('ErrorMessage', sql.NVarChar(sql.MAX), err.message)
+        .execute('usp_UpdateScheduledEmailStatus');
     }
   }
 }

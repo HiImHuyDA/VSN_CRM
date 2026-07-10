@@ -7,7 +7,7 @@ const { getAccessToken } = require('../config/sharepoint');
  */
 function startCampaignScheduler() {
   console.log('[Campaign Scheduler] ⏰ Campaign scheduler registered. Checking every minute...');
-  
+
   let lastRunDate = ''; // Lưu ngày cuối cùng chạy để tránh chạy nhiều lần trong cùng một ngày ở khung giờ 08:00
 
   setInterval(async () => {
@@ -19,7 +19,7 @@ function startCampaignScheduler() {
       // Kiểm tra nếu là đúng 08:00 sáng
       if (currentHours === 8 && currentMinutes === 0) {
         const todayStr = now.toISOString().split('T')[0]; // Định dạng YYYY-MM-DD
-        
+
         if (lastRunDate !== todayStr) {
           console.log(`[Campaign Scheduler] 🚀 Triggering daily campaign job at 08:00 on ${todayStr}`);
           lastRunDate = todayStr;
@@ -39,7 +39,7 @@ async function processCampaigns() {
   try {
     const pool = await getCsrPool();
     const now = new Date();
-    
+
     // Tính ngày tiếp đón 7 ngày tới (YYYY-MM-DD)
     const targetDate = new Date();
     targetDate.setDate(now.getDate() + 7);
@@ -107,7 +107,7 @@ async function processCampaigns() {
         const logCheck = await pool.request()
           .input('ProjectId', sql.NVarChar(100), project.Project_id)
           .query('SELECT 1 FROM CSR_EmailCampaignLogs WHERE ProjectId = @ProjectId AND Status = \'Success\'');
-        
+
         if (logCheck.recordset.length > 0) {
           console.log(`[Campaign Scheduler] ℹ️ Campaign already successfully sent for project ${project.Project_id}. Skipping.`);
           continue;
@@ -193,7 +193,7 @@ async function processCampaigns() {
                 .input('Category', sql.NVarChar(50), project.CustomerType)
                 .input('Name', sql.NVarChar(200), project.CustomerName)
                 .query('SELECT JsonData, Email FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND StatusId = 1');
-              
+
               const row = custRes.recordset?.[0];
               if (row) {
                 if (row.JsonData) {
@@ -205,7 +205,7 @@ async function processCampaigns() {
                         if (email.includes('@')) toRecipientsSet.add(email);
                       });
                     }
-                  } catch (e) {}
+                  } catch (e) { }
                 }
                 if (row.Email && row.Email.trim() !== '') {
                   row.Email.split(/[;,\s\n]+/).forEach(e => {
@@ -220,7 +220,7 @@ async function processCampaigns() {
               .input('Category', sql.NVarChar(50), project.CustomerType)
               .input('Name', sql.NVarChar(200), project.CustomerName)
               .query('SELECT JsonData FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND IsActive = 1');
-            
+
             const customerJsonData = custRes.recordset?.[0]?.JsonData;
             if (customerJsonData) {
               try {
@@ -242,17 +242,14 @@ async function processCampaigns() {
 
         if (toRecipientsSet.size === 0) {
           console.warn(`[Campaign Scheduler] ⚠️ No valid recipient email resolved for template ${matchedTemplate.TemplateName} and project ${project.Project_id}. Skipping.`);
-          
+
           // Ghi log thất bại
           await pool.request()
             .input('TemplateId', sql.Int, matchedTemplate.Id)
             .input('ProjectId', sql.NVarChar(100), project.Project_id)
             .input('Status', sql.NVarChar(50), 'Failed')
             .input('ErrorMessage', sql.NVarChar(sql.MAX), `Không tìm thấy bất kỳ email người nhận hợp lệ nào cho mục đích ${matchedTemplate.Purpose}`)
-            .query(`
-              INSERT INTO CSR_EmailCampaignLogs (TemplateId, ProjectId, Status, ErrorMessage, SentAt)
-              VALUES (@TemplateId, @ProjectId, @Status, @ErrorMessage, GETDATE())
-            `);
+            .execute('usp_InsertEmailCampaignLog');
           continue;
         }
 
@@ -265,7 +262,7 @@ async function processCampaigns() {
 
         // 5. Render nội dung và tiêu đề (Placeholder replacements)
         const concatDestinations = [...new Set(projectTasks.map(t => t.Destination).filter(Boolean))].join(', ');
-        
+
         const dateStrings = projectTasks
           .map(t => t.OnboardDate)
           .filter(Boolean)
@@ -282,17 +279,17 @@ async function processCampaigns() {
           '{{CustomerName}}': project.CustomerName || '',
           '{{Tên Khách Hàng}}': project.CustomerName || '',
           '{{Khách Hàng}}': project.CustomerName || '',
-          
+
           '{{MeetingTopic}}': project.MeetingTopic || '',
           '{{Chủ Đề Tiếp Đón}}': project.MeetingTopic || '',
-          
+
           '{{OnboardDate}}': concatDates,
           '{{Ngày Tiếp Đón}}': concatDates,
-          
+
           '{{SubmitterName}}': project.SubmitterName || '',
           '{{Người Lập Phiếu}}': project.SubmitterName || '',
           '{{Người Gửi}}': project.SubmitterName || '',
-          
+
           '{{Địa Điểm Tiếp Đón}}': concatDestinations
         };
 
@@ -331,14 +328,11 @@ async function processCampaigns() {
           .input('TemplateId', sql.Int, matchedTemplate.Id)
           .input('ProjectId', sql.NVarChar(100), project.Project_id)
           .input('Status', sql.NVarChar(50), 'Success')
-          .query(`
-            INSERT INTO CSR_EmailCampaignLogs (TemplateId, ProjectId, Status, ErrorMessage, SentAt)
-            VALUES (@TemplateId, @ProjectId, @Status, NULL, GETDATE())
-          `);
+          .execute('usp_InsertEmailCampaignLog');
 
       } catch (projErr) {
         console.error(`[Campaign Scheduler] ❌ Failed to process campaign for project ${project.Project_id}:`, projErr.message);
-        
+
         // Ghi log thất bại
         try {
           // Lấy ID template đầu tiên khớp làm tham chiếu ghi log
@@ -348,10 +342,7 @@ async function processCampaigns() {
             .input('ProjectId', sql.NVarChar(100), project.Project_id)
             .input('Status', sql.NVarChar(50), 'Failed')
             .input('ErrorMessage', sql.NVarChar(sql.MAX), errorMsg)
-            .query(`
-              INSERT INTO CSR_EmailCampaignLogs (TemplateId, ProjectId, Status, ErrorMessage, SentAt)
-              VALUES (NULLIF(@TemplateId, 0), @ProjectId, @Status, @ErrorMessage, GETDATE())
-            `);
+            .execute('usp_InsertEmailCampaignLog');
         } catch (dbLogErr) {
           console.error('[Campaign Scheduler] Failed to write error log to DB:', dbLogErr.message);
         }
@@ -368,7 +359,7 @@ async function processCampaigns() {
  */
 async function sendSingleCampaignEmail(projectId, templateId = null) {
   const pool = await getCsrPool();
-  
+
   // 1. Lấy thông tin Project
   const projectRes = await pool.request()
     .input('ProjectId', sql.NVarChar(100), projectId)
@@ -377,7 +368,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
       FROM CSR_Projects
       WHERE Project_id = @ProjectId
     `);
-  
+
   const project = projectRes.recordset?.[0];
   if (!project) {
     throw new Error(`Không tìm thấy đơn tiếp đón với ID: ${projectId}`);
@@ -415,7 +406,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
           AND (EndDate IS NULL OR EndDate >= @Today)
       `);
     const activeTemplates = templatesRes.recordset || [];
-    
+
     for (const temp of activeTemplates) {
       if (temp.Location && temp.Location.trim() !== '') {
         const hasLocationMatch = projectDestinations.some(d => d.toLowerCase() === temp.Location.toLowerCase());
@@ -432,7 +423,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
             matchedTemplate = temp;
             break;
           }
-        } catch {}
+        } catch { }
       }
     }
 
@@ -468,7 +459,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
               if (email.includes('@')) toRecipientsSet.add(email);
             });
           }
-        } catch {}
+        } catch { }
       }
 
       // Fallback: Nếu không tìm thấy email nào trong đơn tiếp đón, tìm từ danh mục cấu hình khách hàng
@@ -477,7 +468,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
           .input('Category', sql.NVarChar(50), project.CustomerType)
           .input('Name', sql.NVarChar(200), project.CustomerName)
           .query('SELECT JsonData, Email FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND StatusId = 1');
-        
+
         const row = custRes.recordset?.[0];
         if (row) {
           if (row.JsonData) {
@@ -489,7 +480,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
                   if (email.includes('@')) toRecipientsSet.add(email);
                 });
               }
-            } catch (e) {}
+            } catch (e) { }
           }
           if (row.Email && row.Email.trim() !== '') {
             row.Email.split(/[;,\s\n]+/).forEach(e => {
@@ -504,7 +495,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
         .input('Category', sql.NVarChar(50), project.CustomerType)
         .input('Name', sql.NVarChar(200), project.CustomerName)
         .query('SELECT JsonData FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND IsActive = 1');
-      
+
       const customerJsonData = custRes.recordset?.[0]?.JsonData;
       if (customerJsonData) {
         try {
@@ -515,7 +506,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
               if (email.includes('@')) toRecipientsSet.add(email);
             });
           }
-        } catch {}
+        } catch { }
       }
     }
   }
@@ -528,10 +519,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
       .input('ProjectId', sql.NVarChar(100), project.Project_id)
       .input('Status', sql.NVarChar(50), 'Failed')
       .input('ErrorMessage', sql.NVarChar(sql.MAX), noRecipError)
-      .query(`
-        INSERT INTO CSR_EmailCampaignLogs (TemplateId, ProjectId, Status, ErrorMessage, SentAt)
-        VALUES (@TemplateId, @ProjectId, @Status, @ErrorMessage, GETDATE())
-      `);
+      .execute('usp_InsertEmailCampaignLog');
     throw new Error(noRecipError);
   }
 
@@ -604,10 +592,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
       .input('TemplateId', sql.Int, matchedTemplate.Id)
       .input('ProjectId', sql.NVarChar(100), project.Project_id)
       .input('Status', sql.NVarChar(50), 'Success')
-      .query(`
-        INSERT INTO CSR_EmailCampaignLogs (TemplateId, ProjectId, Status, ErrorMessage, SentAt)
-        VALUES (@TemplateId, @ProjectId, @Status, NULL, GETDATE())
-      `);
+      .execute('usp_InsertEmailCampaignLog');
 
     return {
       success: true,
@@ -621,10 +606,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
       .input('ProjectId', sql.NVarChar(100), project.Project_id)
       .input('Status', sql.NVarChar(50), 'Failed')
       .input('ErrorMessage', sql.NVarChar(sql.MAX), errorMsg)
-      .query(`
-        INSERT INTO CSR_EmailCampaignLogs (TemplateId, ProjectId, Status, ErrorMessage, SentAt)
-        VALUES (@TemplateId, @ProjectId, @Status, @ErrorMessage, GETDATE())
-      `);
+      .execute('usp_InsertEmailCampaignLog');
 
     throw new Error(`Graph API Error: ${errorMsg}`);
   }
@@ -635,4 +617,3 @@ module.exports = {
   processCampaigns,
   sendSingleCampaignEmail
 };
-

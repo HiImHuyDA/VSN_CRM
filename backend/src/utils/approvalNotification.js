@@ -13,7 +13,7 @@ const { upsertExcelRow, upsertGateExcelRow } = require('./sharepointExcel');
 async function handleBODApprovalActions(projectId, pool) {
   try {
     console.log(`[Approval Actions] 🚀 Starting BOD approval workflows for ${projectId}`);
-    
+
     if (!pool) {
       pool = await getCsrPool();
     }
@@ -406,11 +406,11 @@ async function bookMeetingRooms(project, tasks, pool) {
     }
 
     // Lọc ra các task có chọn phòng họp
-    const bookingTasks = tasks.filter(t => 
-      t.MeetingRoom && 
-      t.MeetingRoom.trim() !== '' && 
+    const bookingTasks = tasks.filter(t =>
+      t.MeetingRoom &&
+      t.MeetingRoom.trim() !== '' &&
       t.MeetingRoom !== 'Chọn phòng họp...' &&
-      t.MeetingRoomEmail && 
+      t.MeetingRoomEmail &&
       t.MeetingRoomEmail.trim() !== ''
     );
 
@@ -534,7 +534,7 @@ async function bookMeetingRooms(project, tasks, pool) {
         await pool.request()
           .input('CalendarEventId', sql.NVarChar(200), eventId)
           .input('TaskId', sql.NVarChar(150), task.Task_id)
-          .query('UPDATE CSR_Tasks SET CalendarEventId = @CalendarEventId WHERE Task_id = @TaskId');
+          .execute('usp_UpdateTaskCalendarEventId');
 
         console.log(`[Meeting Room Calendar] ✅ Database updated with CalendarEventId for task ${task.Task_id}`);
       } catch (err) {
@@ -552,7 +552,7 @@ async function bookMeetingRooms(project, tasks, pool) {
 async function handleProjectEditNotification(newProjectId, oldProjectId, pool) {
   try {
     console.log(`[Edit Notification] 🚀 Starting edit notification for ${newProjectId} (reply to ${oldProjectId})`);
-    
+
     if (!pool) {
       pool = await getCsrPool();
     }
@@ -573,9 +573,9 @@ async function handleProjectEditNotification(newProjectId, oldProjectId, pool) {
 
     // Gửi email custom với tiêu đề RE: và tiền tố thay đổi
     await sendApprovalEmailWithPrefix(
-      project, 
-      activeTasks, 
-      `RE: CRM-Request: Thông báo khách đến thăm VSN [${oldProjectId}]`, 
+      project,
+      activeTasks,
+      `RE: CRM-Request: Thông báo khách đến thăm VSN [${oldProjectId}]`,
       `<div style="font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; color: #d9381e; margin-bottom: 20px; border-left: 4px solid #d9381e; padding-left: 10px;">
         Đơn tiếp khách có thay đổi như sau:
       </div>`,
@@ -593,7 +593,7 @@ async function handleProjectEditNotification(newProjectId, oldProjectId, pool) {
 async function handleProjectCancelNotification(projectId, reason, pool) {
   try {
     console.log(`[Cancel Notification] 🚀 Starting cancel notification for ${projectId}`);
-    
+
     if (!pool) {
       pool = await getCsrPool();
     }
@@ -738,7 +738,7 @@ async function handleProjectCancelNotification(projectId, reason, pool) {
     if (organizerEmail) {
       const accessToken = await getAccessToken();
       const bookingTasks = tasks.filter(t => t.CalendarEventId && t.CalendarEventId.trim() !== '');
-      
+
       for (const task of bookingTasks) {
         try {
           console.log(`[Cancel Notification] 🗓️ Cancelling Outlook event ${task.CalendarEventId} for room ${task.MeetingRoom}`);
@@ -749,11 +749,12 @@ async function handleProjectCancelNotification(projectId, reason, pool) {
             }
           });
           console.log(`[Cancel Notification] ✅ Outlook event ${task.CalendarEventId} cancelled.`);
-          
+
           // Clear CalendarEventId trong DB
           await pool.request()
             .input('TaskId', sql.NVarChar(150), task.Task_id)
-            .query('UPDATE CSR_Tasks SET CalendarEventId = NULL WHERE Task_id = @TaskId');
+            .input('CalendarEventId', sql.NVarChar(200), null)
+            .execute('usp_UpdateTaskCalendarEventId');
         } catch (eventErr) {
           console.error(`[Cancel Notification] ❌ Failed to cancel Outlook event ${task.CalendarEventId}:`, eventErr.response?.data || eventErr.message);
         }
@@ -894,7 +895,7 @@ async function sendApprovalEmailWithPrefix(project, tasks, customSubject, prefix
             return `${salutation ? salutation + ' ' : ''}${name}${title ? ' - ' + title : ''}`;
           }).join(' | ');
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const uniqueDests = uniqueDestinations;
@@ -1040,7 +1041,7 @@ async function sendApprovalEmailWithPrefix(project, tasks, customSubject, prefix
  */
 function getScheduleTextForDestination(agendaJson, destination) {
   if (!agendaJson || !Array.isArray(agendaJson)) return '';
-  
+
   const items = [];
   agendaJson.forEach(day => {
     const dateStr = day.date; // yyyy-MM-dd
@@ -1145,16 +1146,16 @@ function getYYYYMMDD(dateVal) {
  */
 function getScheduleTextForDestinationAndDate(agendaJson, destination, onboardDate) {
   if (!agendaJson || !Array.isArray(agendaJson)) return '';
-  
+
   const targetDateStr = getYYYYMMDD(onboardDate);
   if (!targetDateStr) return '';
-  
+
   const items = [];
-  
+
   agendaJson.forEach(day => {
     const dayDateStr = getYYYYMMDD(day.date);
     if (dayDateStr !== targetDateStr) return;
-    
+
     const agendaList = day.agenda?.[destination] || [];
     agendaList.forEach(item => {
       items.push({
@@ -1455,7 +1456,7 @@ async function handleVehicleTasksSyncAndNotification(project, tasks, pool) {
     if (project.AgendaJsonData) {
       try {
         agendaJson = JSON.parse(project.AgendaJsonData);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const guestRepsCompiled = compileGuestRepsList(project.GuestReps);
@@ -1486,11 +1487,11 @@ async function handleVehicleTasksSyncAndNotification(project, tasks, pool) {
       const trackingKey = `${project.ParentId}_${task.Destination}_${taskOnboardDateStr}`;
 
       const scheduleText = getScheduleTextForDestinationAndDate(agendaJson, task.Destination, task.OnboardDate);
-      
+
       // Lấy số người đi xe từ task.PassengerCount nếu được nhập, nếu không fallback về totalPeople, tối thiểu là 1
       const passengerCount = parseInt(task.PassengerCount, 10) || totalPeople || 1;
       const ngayVeFormatted = formatDDate(task.ReturnDate || task.OnboardDate);
-      
+
       const noiDungCongTac = `Số người: ${passengerCount} ; Phương tiện: ${task.Vehicle || '—'} ; Ngày về: ${ngayVeFormatted} ; Thông tin lịch trình: ${scheduleText || '—'}`;
 
       const excelData = {
@@ -1582,10 +1583,7 @@ async function scheduleApprovalEmail(projectId, parentId, isEdit, activeTasks, p
       .input('ParentId', sql.NVarChar(100), parentId)
       .input('EmailType', sql.NVarChar(50), emailType)
       .input('SendAt', sql.DateTime, sendAt)
-      .query(`
-        INSERT INTO CSR_ScheduledEmails (ProjectId, ParentId, EmailType, SendAt, Status, CreatedAt, UpdatedAt)
-        VALUES (@ProjectId, @ParentId, @EmailType, @SendAt, 'Pending', GETDATE(), GETDATE())
-      `);
+      .execute('usp_InsertScheduledEmail');
 
     console.log(`[Scheduled Email] ⏰ Scheduled email type "${emailType}" for project ${projectId} at ${sendAt.toISOString()}`);
   } catch (error) {
@@ -1604,11 +1602,7 @@ async function cancelPendingScheduledEmails(parentId, pool) {
     }
     await pool.request()
       .input('ParentId', sql.NVarChar(100), parentId)
-      .query(`
-        UPDATE CSR_ScheduledEmails
-        SET Status = 'Cancelled', UpdatedAt = GETDATE()
-        WHERE ParentId = @ParentId AND Status = 'Pending'
-      `);
+      .execute('usp_CancelPendingScheduledEmails');
     console.log(`[Scheduled Email] ❌ Cancelled all pending scheduled emails for parent ${parentId}`);
   } catch (error) {
     console.error(`[Scheduled Email] ❌ Failed to cancel pending scheduled emails for parent ${parentId}:`, error.message);
@@ -1669,8 +1663,8 @@ async function handleGatePassSync(project, tasks, pool) {
             const titlePart = r.title ? ` - ${r.title.trim()}` : '';
             return `${salu} ${namePart}${titlePart}`.trim();
           })
-          .filter(x => x && x !== '.' && x !== '-')
-          .join(' | ');
+            .filter(x => x && x !== '.' && x !== '-')
+            .join(' | ');
         }
       } catch (e) {
         console.error('[Gate Sync] Error parsing GuestReps:', e.message);
@@ -1703,4 +1697,3 @@ module.exports = {
   sendApprovalEmail,
   cancelPendingScheduledEmails
 };
-

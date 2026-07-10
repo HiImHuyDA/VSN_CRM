@@ -3,6 +3,7 @@
 // KHÔNG có business logic tại đây
 const express = require('express');
 const router = express.Router();
+const authenticateToken = require('../middleware/auth');
 const { getCsrPool, sql } = require('../config/database');
 const { logAuditAction } = require('../utils/auditLogger');
 const { sendNotification } = require('../utils/notification');
@@ -18,7 +19,7 @@ const {
  * GET /api/submissions
  * Lấy danh sách đơn (từ vw_SubmissionSummary qua usp_Submission_List)
  */
-router.get('/', async (req, res, next) => {
+router.get('/', authenticateToken, async (req, res, next) => {
   try {
     const { search = '', status = '', page = 1, pageSize = 20, role = '', mnv = '', tab = 'tracking' } = req.query;
     const pool = await getCsrPool();
@@ -52,9 +53,97 @@ router.get('/', async (req, res, next) => {
 });
 
 /**
+ * GET /api/submissions/teams-action
+ * Xử lý click từ nút bấm duyệt/từ chối trên MS Teams
+ * PHẢI đặt trước /:projectId để Express không nhầm 'teams-action' thành projectId
+ */
+router.get('/teams-action', authenticateToken, async (req, res, next) => {
+  try {
+    const { projectId, action, actorRole, actorName } = req.query;
+    if (!projectId || !action) {
+      return res.status(400).send('<h1>Thiếu tham số bắt buộc</h1>');
+    }
+
+    const pool = await getCsrPool();
+    let resultMessage = '';
+
+    if (action === 'approve') {
+      const result = await pool.request()
+        .input('ProjectId', sql.NVarChar(100), projectId)
+        .input('ActorRole', sql.NVarChar(50), actorRole || 'BOD')
+        .input('ActorMNV', sql.NVarChar(50), 'TEAMS_SYSTEM')
+        .input('ActorName', sql.NVarChar(200), actorName || 'BOD Member via Teams')
+        .input('ActorEmail', sql.NVarChar(200), null)
+        .input('Note', sql.NVarChar(sql.MAX), 'Được duyệt nhanh qua Microsoft Teams')
+        .execute('usp_ApproveSubmission');
+
+      const row = result.recordset?.[0];
+      await logAuditAction('Phê duyệt đơn', 'TEAMS_SYSTEM', `Duyệt đơn qua MS Teams`, projectId);
+      await sendNotification(`Đơn ${projectId} đã được phê duyệt bởi BOD (qua Teams)`, 'TEAMS_SYSTEM', projectId);
+
+      if (row?.NewStatus === 'BOD đã duyệt') {
+        await syncNewCustomerReps(projectId, pool);
+        handleBODApprovalActions(projectId, pool).catch(err => {
+          console.error('[Teams Approval Workflow] ❌ Background BOD workflows failed:', err);
+        });
+      }
+
+      resultMessage = `Đơn ${projectId} đã được PHÊ DUYỆT thành công. Trạng thái mới: ${row?.NewStatus}`;
+    } else if (action === 'reject') {
+      const result = await pool.request()
+        .input('ProjectId', sql.NVarChar(100), projectId)
+        .input('ActorRole', sql.NVarChar(50), actorRole || 'BOD')
+        .input('ActorMNV', sql.NVarChar(50), 'TEAMS_SYSTEM')
+        .input('ActorName', sql.NVarChar(200), actorName || 'BOD Member via Teams')
+        .input('ActorEmail', sql.NVarChar(200), null)
+        .input('Reason', sql.NVarChar(sql.MAX), 'Từ chối qua Microsoft Teams')
+        .execute('usp_RejectSubmission');
+
+      await logAuditAction('Từ chối đơn', 'TEAMS_SYSTEM', `Từ chối đơn qua MS Teams`, projectId);
+      await sendNotification(`Đơn ${projectId} đã bị TỪ CHỐI bởi BOD (qua Teams)`, 'TEAMS_SYSTEM', projectId);
+
+      resultMessage = `Đơn ${projectId} đã TỪ CHỐI thành công.`;
+    } else {
+      return res.status(400).send('<h1>Hành động không hợp lệ</h1>');
+    }
+
+    // Trả về HTML tự động đóng tab hoặc hiển thị thông báo
+    res.send(`
+      <html>
+        <head>
+          <title>CSR Action</title>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 50px; background-color: #f3f2f1; }
+            .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+            h2 { color: #0078d4; }
+            .close-btn { margin-top: 20px; padding: 10px 20px; background: #0078d4; color: white; border: none; border-radius: 4px; cursor: pointer; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h2>Hoàn tất thao tác</h2>
+            <p>${resultMessage}</p>
+            <p style="color: #605e5c; font-size: 0.9em; margin-top: 20px;">Hệ thống đã ghi nhận, bạn có thể đóng tab này.</p>
+            <button class="close-btn" onclick="window.close()">Đóng Tab</button>
+          </div>
+          <script>
+            setTimeout(() => window.close(), 3000);
+          </script>
+        </body>
+      </html>
+    `);
+  } catch (err) {
+    res.status(500).send(`<h1>Đã có lỗi xảy ra</h1><p>${err.message}</p>`);
+  }
+});
+
+/**
  * GET /api/submissions/:projectId
  * Chi tiết 1 đơn + tasks (qua usp_Submission_GetDetail)
  */
+// GET /:projectId - CỐ Ý để public (không authenticateToken): được dùng bởi trang
+// đánh giá khách hàng công khai /public/evaluation/:projectId (CustomerEvaluation.jsx),
+// nơi khách hàng bên ngoài xem thông tin đơn mà không cần đăng nhập vào hệ thống CRM.
 router.get('/:projectId', async (req, res, next) => {
   try {
     const pool = await getCsrPool();
@@ -91,7 +180,7 @@ router.get('/:projectId', async (req, res, next) => {
  * Tạo đơn mới — gọi usp_CreateSubmission
  * SQL sẽ tự: sinh Project_id, tính Deadline, tính ReminderDate
  */
-router.post('/', async (req, res, next) => {
+router.post('/', authenticateToken, async (req, res, next) => {
   try {
     const {
       customerType, customerName, submitterEmail, submitterName, submitterMNV,
@@ -181,7 +270,7 @@ router.post('/', async (req, res, next) => {
 /**
  * GET /api/submissions/:projectId/history
  */
-router.get('/:projectId/history', async (req, res, next) => {
+router.get('/:projectId/history', authenticateToken, async (req, res, next) => {
   try {
     const pool = await getCsrPool();
     // Lấy ParentId
@@ -204,7 +293,7 @@ router.get('/:projectId/history', async (req, res, next) => {
  * PUT /api/submissions/:projectId
  * Chỉnh sửa đơn - tạo version mới
  */
-router.put('/:projectId', async (req, res, next) => {
+router.put('/:projectId', authenticateToken, async (req, res, next) => {
   try {
     const pool = await getCsrPool();
     // Get old submission
@@ -294,7 +383,7 @@ router.put('/:projectId', async (req, res, next) => {
  * GET /api/submissions/recommend-restaurants
  * Lấy lịch sử đặt nhà hàng ăn tối của khách hàng này để thống kê số lần đặt (phục vụ đề xuất)
  */
-router.get('/recommend-restaurants', async (req, res, next) => {
+router.get('/recommend-restaurants', authenticateToken, async (req, res, next) => {
   try {
     const { customerName } = req.query;
     if (!customerName) {
@@ -324,7 +413,7 @@ router.get('/recommend-restaurants', async (req, res, next) => {
  * POST /api/submissions/:projectId/cancel
  * Hủy đơn: Tạo bản ghi mới với RecordType = 3
  */
-router.post('/:projectId/cancel', async (req, res, next) => {
+router.post('/:projectId/cancel', authenticateToken, async (req, res, next) => {
   try {
     const { projectId } = req.params;
     const { actorMNV, reason } = req.body;
@@ -374,12 +463,7 @@ router.post('/:projectId/cancel', async (req, res, next) => {
       .input('Reason', sql.NVarChar(sql.MAX), reason || null)
       .input('OldStatus', sql.NVarChar(50), oldStatus || null)
       .input('NewStatus', sql.NVarChar(50), 'Đã hủy')
-      .query(`
-        INSERT INTO [dbo].[CSR_ApprovalLogs]
-          ([ProjectId], [Action], [Role], [ActorMNV], [ActorName], [Reason], [OldStatus], [NewStatus])
-        VALUES
-          (@ProjectId, @Action, @Role, @ActorMNV, @ActorName, @Reason, @OldStatus, @NewStatus)
-      `);
+      .execute('usp_InsertApprovalLog');
 
     // Insert log cho đơn mới (nếu có suffix _C)
     if (row?.Project_id && row.Project_id !== projectId) {
@@ -392,12 +476,7 @@ router.post('/:projectId/cancel', async (req, res, next) => {
         .input('Reason', sql.NVarChar(sql.MAX), reason || null)
         .input('OldStatus', sql.NVarChar(50), oldStatus || null)
         .input('NewStatus', sql.NVarChar(50), 'Đã hủy')
-        .query(`
-          INSERT INTO [dbo].[CSR_ApprovalLogs]
-            ([ProjectId], [Action], [Role], [ActorMNV], [ActorName], [Reason], [OldStatus], [NewStatus])
-          VALUES
-            (@ProjectId, @Action, @Role, @ActorMNV, @ActorName, @Reason, @OldStatus, @NewStatus)
-        `);
+        .execute('usp_InsertApprovalLog');
     }
 
     // Lấy ParentId của đơn
@@ -432,7 +511,7 @@ router.post('/:projectId/cancel', async (req, res, next) => {
  * POST /api/submissions/:projectId/approve
  * Phê duyệt đơn — gọi usp_ApproveSubmission
  */
-router.post('/:projectId/approve', async (req, res, next) => {
+router.post('/:projectId/approve', authenticateToken, async (req, res, next) => {
   try {
     const { actorRole, actorMNV, actorName, actorEmail, note } = req.body;
     const pool = await getCsrPool();
@@ -488,7 +567,7 @@ router.post('/:projectId/approve', async (req, res, next) => {
  * POST /api/submissions/:projectId/reject
  * Từ chối đơn — gọi usp_RejectSubmission
  */
-router.post('/:projectId/reject', async (req, res, next) => {
+router.post('/:projectId/reject', authenticateToken, async (req, res, next) => {
   try {
     const { actorRole, actorMNV, actorName, actorEmail, reason } = req.body;
     if (!reason || !reason.trim()) {
@@ -520,7 +599,7 @@ router.post('/:projectId/reject', async (req, res, next) => {
  * GET /api/submissions/:projectId/logs
  * Lịch sử phê duyệt — gọi usp_GetApprovalLogs
  */
-router.get('/:projectId/logs', async (req, res, next) => {
+router.get('/:projectId/logs', authenticateToken, async (req, res, next) => {
   try {
     const pool = await getCsrPool();
     const result = await pool.request()

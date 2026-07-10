@@ -26,7 +26,7 @@ async function getSharePointSiteId(accessToken) {
  */
 function startFeedbackScheduler() {
   console.log('[Feedback Scheduler] ⏰ Feedback scheduler registered. Checking every minute...');
-  
+
   let lastRunDate = ''; // Tránh chạy quét gửi mail nhiều lần trong ngày lúc 08:30
 
   setInterval(async () => {
@@ -135,15 +135,10 @@ async function sendFeedbackForProject(project, pool) {
         .input('ExpireDate', sql.DateTime, expireDate)
         .input('Status', sql.NVarChar(50), 'Pending')
         .input('CreatedBy', sql.NVarChar(100), 'SYSTEM')
-        .query(`
-          INSERT INTO [dbo].[CSR_FeedbackInvitations]
-            ([Token], [ProjectId], [VisitorId], [ExpireDate], [Status], [CreatedBy])
-          VALUES
-            (@Token, @ProjectId, @VisitorId, @ExpireDate, @Status, @CreatedBy)
-        `);
+        .execute('usp_InsertFeedbackInvitation');
 
       // 2. Thêm item mới vào SharePoint List hàng đợi CSR_Feedback_Queue
-      const meetingDateStr = project.SubmitDate 
+      const meetingDateStr = project.SubmitDate
         ? new Date(project.SubmitDate).toLocaleDateString('vi-VN')
         : new Date().toLocaleDateString('vi-VN');
 
@@ -256,7 +251,7 @@ async function syncFeedbackResultsFromSharePoint() {
       } catch (dbErr) {
         // Nếu lỗi xảy ra do token không hợp lệ/đã dùng, vẫn xóa dòng đó trên SharePoint List để tránh treo lỗi hàng đợi
         console.error(`[Feedback Sync] ❌ DB update failed for token ${token.substring(0, 10)}...:`, dbErr.message);
-        
+
         if (dbErr.message.includes('không hợp lệ') || dbErr.message.includes('đã được nộp') || dbErr.message.includes('hết hạn')) {
           const deleteUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${resultsListName}/items/${itemId}`;
           await axios.delete(deleteUrl, {
@@ -277,4 +272,3 @@ module.exports = {
   processFeedbackInvitations,
   syncFeedbackResultsFromSharePoint
 };
-

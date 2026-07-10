@@ -1,5 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const authenticateToken = require('../middleware/auth');
+router.use(authenticateToken);
+const authorizeRoles = require('../middleware/authorize');
+router.use(authorizeRoles('Admin'));
+
 const bcrypt = require('bcrypt');
 const { getCsrPool, sql } = require('../config/database');
 
@@ -17,11 +22,13 @@ router.get('/', async (req, res) => {
 // Thêm API Tạo tài khoản mới
 router.post('/', async (req, res) => {
   const { MNV, Password, FullName, Email, Role, Department, IsActive } = req.body;
-  if (!MNV || !Password || !FullName) {
+  if (!MNV || !FullName) {
     return res.status(400).json({ success: false, message: 'Vui lòng nhập đầy đủ thông tin bắt buộc' });
   }
   try {
-    const PasswordHash = await bcrypt.hash(Password, 10);
+    // Nếu Admin không nhập mật khẩu, mặc định dùng chính MNV làm mật khẩu ban đầu
+    const pwdToUse = (Password && String(Password).trim()) || MNV;
+    const PasswordHash = await bcrypt.hash(pwdToUse, 10);
     const pool = await getCsrPool();
     await pool.request()
       .input('UserId', sql.Int, 0)
@@ -76,11 +83,11 @@ router.put('/:userId', async (req, res) => {
   }
 });
 
-// Reset password về mặc định
+// Reset password về mặc định (= MNV của tài khoản đó)
 router.post('/:mnv/reset-password', async (req, res) => {
   const { mnv } = req.params;
   try {
-    const PasswordHash = await bcrypt.hash('Aa@123456', 10);
+    const PasswordHash = await bcrypt.hash(mnv, 10);
     const pool = await getCsrPool();
     await pool.request()
       .input('MNV', sql.NVarChar(50), mnv)
@@ -100,7 +107,6 @@ router.post('/batch', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Không có dữ liệu' });
   }
 
-  const defaultPassword = 'Aa@123456';
   const pool = await getCsrPool();
   let inserted = 0;
   const errors = [];
@@ -117,6 +123,9 @@ router.post('/batch', async (req, res) => {
       errors.push(`Bỏ qua dòng thiếu MNV hoặc Họ tên: ${mnv || '(trống)'}`);
       continue;
     }
+
+    // Mật khẩu mặc định cho tài khoản mới = chính MNV của người đó (nếu Excel không có cột password riêng)
+    const defaultPassword = mnv;
 
     try {
       // Kiểm tra xem User đã tồn tại theo MNV hay chưa
@@ -175,4 +184,3 @@ router.post('/batch', async (req, res) => {
 });
 
 module.exports = router;
-

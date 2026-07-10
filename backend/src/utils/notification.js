@@ -10,16 +10,13 @@ function setSseEmitter(emitter) {
 async function sendNotification(message, actorMNV, projectId) {
   try {
     const pool = await getCsrPool();
-    
+
     // Insert notification directly into the table
     await pool.request()
       .input('Message', sql.NVarChar(sql.MAX), message)
       .input('ActorMNV', sql.NVarChar(50), actorMNV || null)
       .input('ProjectId', sql.NVarChar(100), projectId ? String(projectId) : null)
-      .query(`
-        INSERT INTO CSR_Notifications (Message, ActorMNV, ProjectId, IsRead, CreatedAt)
-        VALUES (@Message, @ActorMNV, @ProjectId, 0, GETDATE())
-      `);
+      .execute('usp_InsertNotification');
 
     // Push SSE event to all connected clients
     if (sendSseEvent) {
