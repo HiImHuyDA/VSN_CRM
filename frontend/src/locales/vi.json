@@ -1,0 +1,46 @@
+{
+  "app": {
+    "title": "Đăng Ký Lịch Tiếp Đón Khách Hàng",
+    "createBtn": "Tạo Mới",
+    "logout": "Đăng xuất",
+    "changePassword": "Thay đổi mật khẩu",
+    "adminBadge": "Quản trị viên"
+  },
+  "menu": {
+    "dashboard": "Tổng quan",
+    "submissions": "Danh sách đơn",
+    "newSubmission": "Tạo mới đơn",
+    "guestCalendar": "Theo dõi lịch tiếp khách",
+    "reports": "Báo cáo & Thống kê"
+  },
+  "list": {
+    "title": "Danh sách Đơn tiếp đón",
+    "subtitle": "Quản lý và theo dõi tất cả các lịch trình tiếp đón khách.",
+    "exportBtn": "Xuất dữ liệu",
+    "tabTracking": "Theo dõi yêu cầu",
+    "tabSearch": "Tra cứu yêu cầu",
+    "empty": "Không tìm thấy đơn tiếp đón nào khớp.",
+    "loading": "Loading submissions...",
+    "pageDisplay": "Hiển thị trang {page} / {totalPages} (Tổng số: {total})",
+    "headers": {
+      "projectId": "Mã Đơn",
+      "customer": "Khách hàng",
+      "onboardDate": "Ngày tiếp đón",
+      "topic": "Chủ đề",
+      "submitter": "Người tạo",
+      "location": "Địa điểm",
+      "status": "Trạng thái",
+      "createdAt": "Ngày tạo đơn",
+      "updatedAt": "Ngày chỉnh sửa"
+    },
+    "filter": {
+      "id": "Mã Đơn (ID)",
+      "customer": "Khách hàng",
+      "year": "Năm",
+      "month": "Tháng",
+      "date": "Ngày tiếp đón",
+      "location": "Địa điểm",
+      "status": "Trạng thái"
+    }
+  }
+}

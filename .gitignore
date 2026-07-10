@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Environment
+.env
+.env.*
+backend/.env
+backend/.env.example
+frontend/.env
+
+# Build output
+dist/
+build/
+.next/
+frontend/dist/
+
+# Vercel
+.vercel/
+
+# Logs
+logs/
+*.log
+
+# Upload files
+backend/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
