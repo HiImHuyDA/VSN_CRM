@@ -128,7 +128,7 @@ export default function FeedbackManagement() {
       if (rep) {
         return { name: rep.name || 'Khách', email: rep.email || '—' };
       }
-    } catch (e) {}
+    } catch (e) { }
     return { name: 'Khách', email: '—' };
   };
 
@@ -175,7 +175,7 @@ export default function FeedbackManagement() {
     const ws = utils.json_to_sheet(rows);
     const wb = utils.book_new();
     utils.book_append_sheet(wb, ws, activeTab === 'invitations' ? 'ThuMoiKhaoSat' : 'KetQuaDanhGia');
-    
+
     // Xuất file
     const excelBuffer = write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' });
@@ -192,28 +192,27 @@ export default function FeedbackManagement() {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-xl font-bold text-on-surface">Quản lý Phản Hồi Khách Hàng (Feedback)</h2>
-          <p className="text-xs text-on-surface-variant">Theo dõi thư mời khảo sát và ý kiến đánh giá từ đại diện đoàn tiếp đón</p>
+          <h2 className="text-2xl font-bold text-on-surface mb-1">Quản lý Phản Hồi Khách Hàng</h2>
         </div>
         <div className="flex gap-2">
-          <button 
-            onClick={handleTriggerCron} 
+          <button
+            onClick={handleTriggerCron}
             disabled={triggering}
             className="btn btn-outline btn-sm flex items-center gap-1.5 hover:bg-surface-container"
           >
             <span className="material-symbols-outlined text-sm">send</span>
             {triggering ? 'Đang quét...' : 'Quét & gửi thư mời'}
           </button>
-          <button 
-            onClick={handleTriggerSync} 
+          <button
+            onClick={handleTriggerSync}
             disabled={syncing}
             className="btn btn-outline btn-sm flex items-center gap-1.5 hover:bg-surface-container"
           >
             <span className="material-symbols-outlined text-sm">sync</span>
             {syncing ? 'Đang đồng bộ...' : 'Quét kết quả đánh giá'}
           </button>
-          <button 
-            onClick={exportExcel} 
+          <button
+            onClick={exportExcel}
             className="btn btn-primary btn-sm flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-sm">download</span>
@@ -226,17 +225,15 @@ export default function FeedbackManagement() {
       <div className="flex gap-4 border-b border-outline-variant">
         <button
           onClick={() => { setActiveTab('invitations'); }}
-          className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${
-            activeTab === 'invitations' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'
-          }`}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'invitations' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'
+            }`}
         >
           Thư Mời Khảo Sát
         </button>
         <button
           onClick={() => { setActiveTab('responses'); }}
-          className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${
-            activeTab === 'responses' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'
-          }`}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-colors ${activeTab === 'responses' ? 'border-primary text-primary' : 'border-transparent text-on-surface-variant hover:text-primary'
+            }`}
         >
           Kết Quả Đánh Giá
         </button>
@@ -315,7 +312,7 @@ export default function FeedbackManagement() {
           </div>
         )}
         <div className="flex items-end">
-          <button 
+          <button
             onClick={() => {
               setFilterCustomer('');
               setFilterHost('');
@@ -370,28 +367,27 @@ export default function FeedbackManagement() {
                         {new Date(x.ExpireDate).toLocaleDateString('vi-VN')}
                       </td>
                       <td>
-                        <span className={`badge ${
-                          x.Status === 'Completed' ? 'badge-success' :
-                          x.Status === 'Pending' ? 'badge-info' :
-                          x.Status === 'Expired' ? 'badge-danger' : 'badge-warning'
-                        }`}>
+                        <span className={`badge ${x.Status === 'Completed' ? 'badge-success' :
+                            x.Status === 'Pending' ? 'badge-info' :
+                              x.Status === 'Expired' ? 'badge-danger' : 'badge-warning'
+                          }`}>
                           {x.Status === 'Completed' ? 'Đã hoàn thành' :
-                           x.Status === 'Pending' ? 'Đang chờ' :
-                           x.Status === 'Expired' ? 'Hết hạn' : 'Đã hủy'}
+                            x.Status === 'Pending' ? 'Đang chờ' :
+                              x.Status === 'Expired' ? 'Hết hạn' : 'Đã hủy'}
                         </span>
                       </td>
                       <td>
                         <div className="flex gap-2">
                           {x.Status === 'Pending' || x.Status === 'Expired' ? (
                             <>
-                              <button 
+                              <button
                                 onClick={() => handleResend(x.Id)}
                                 className="btn btn-outline btn-xs hover:bg-surface-container"
                                 title="Gia hạn & Gửi lại mail"
                               >
                                 Gửi lại
                               </button>
-                              <button 
+                              <button
                                 onClick={() => handleCancel(x.Id)}
                                 className="btn btn-outline btn-xs btn-danger hover:bg-red-50"
                                 title="Hủy liên kết đánh giá"

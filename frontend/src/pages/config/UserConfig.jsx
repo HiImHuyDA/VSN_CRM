@@ -5,13 +5,13 @@ import { ComboboxMultiple } from '../../components/ui/combobox';
 import ExcelImportModal from '../../components/ui/ExcelImportModal';
 
 const USER_COLUMNS = [
-  { key: 'mnv',        label: 'Mã nhân viên (MNV)',    required: true,  example: 'VSN001' },
-  { key: 'fullName',   label: 'Họ và tên',             required: true,  example: 'Nguyễn Văn A' },
-  { key: 'email',      label: 'Email',                 required: false, example: 'nguyen.a@vsn.com.vn' },
-  { key: 'role',       label: 'Vai trò (Admin/BOD/PRD/User)', required: false, example: 'User', validationList: ['Admin', 'BOD', 'PRD', 'User'] },
-  { key: 'department', label: 'Phòng ban',             required: false, example: 'Phòng Nhân sự' },
-  { key: 'password',   label: 'Mật khẩu',              required: false, example: 'Aa@123456' },
-  { key: 'isActive',   label: 'Trạng thái',            required: false, example: 'Hoạt động', validationList: ['Hoạt động', 'Ngưng hoạt động'] },
+  { key: 'mnv', label: 'Mã nhân viên (MNV)', required: true, example: 'VSN001' },
+  { key: 'fullName', label: 'Họ và tên', required: true, example: 'Nguyễn Văn A' },
+  { key: 'email', label: 'Email', required: false, example: 'nguyen.a@vsn.com.vn' },
+  { key: 'role', label: 'Vai trò (Admin/BOD/PRD/User)', required: false, example: 'User', validationList: ['Admin', 'BOD', 'PRD', 'User'] },
+  { key: 'department', label: 'Phòng ban', required: false, example: 'Phòng Nhân sự' },
+  { key: 'password', label: 'Mật khẩu', required: false, example: 'Aa@123456' },
+  { key: 'isActive', label: 'Trạng thái', required: false, example: 'Hoạt động', validationList: ['Hoạt động', 'Ngưng hoạt động'] },
 ];
 
 
@@ -69,7 +69,7 @@ export default function UserConfig() {
         toast.success(`Đồng bộ thành công ${res.data.rowsAffected} nhân viên`, { id: 'sync' });
         loadSyncStatus();
         loadUsers(); // reload users after sync
-        
+
         setSyncResults({
           missing: res.data.missingEmployees || [],
           new: res.data.newEmployees || []
@@ -184,17 +184,17 @@ export default function UserConfig() {
       if (selectedMnvs.length > 0 && !selectedMnvs.includes(u.MNV)) return false;
       if (selectedDepts.length > 0 && !selectedDepts.includes(u.Department)) return false;
       if (selectedRoles.length > 0 && !selectedRoles.includes(u.Role)) return false;
-      
+
       const userStatus = u.IsActive ? 'Hoạt động' : 'Ngưng hoạt động';
       if (selectedStatuses.length > 0 && !selectedStatuses.includes(userStatus)) return false;
-      
+
       return true;
     });
   }, [users, selectedMnvs, selectedDepts, selectedRoles, selectedStatuses]);
 
   return (
     <div className="page-container">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Danh sách Tài khoản</h1>
         </div>
@@ -205,20 +205,20 @@ export default function UserConfig() {
               <div>Lần đồng bộ cuối: {syncStatus.lastSyncAt ? new Date(syncStatus.lastSyncAt).toLocaleString('vi-VN') : 'Chưa có'}</div>
             </div>
           )}
-          <button 
+          <button
             onClick={() => setShowImport(true)}
             className="btn btn-outline gap-1"
           >
             <span className="material-symbols-outlined text-[16px]">upload_file</span>
             Import Excel
           </button>
-          <button 
+          <button
             onClick={() => setShowCreateModal(true)}
             className="btn btn-outline"
           >
             Tạo tài khoản
           </button>
-          <button 
+          <button
             onClick={handleSync}
             disabled={isSyncing}
             className="btn btn-primary"
@@ -235,7 +235,7 @@ export default function UserConfig() {
             <h3 className="font-bold text-lg" style={{ color: '#0958D9' }}>Kết quả Đồng bộ</h3>
             <button onClick={() => setSyncResults(null)} className="btn btn-ghost btn-sm">✕ Đóng</button>
           </div>
-          
+
           <div className="mb-6">
             <h4 className="font-bold mb-2" style={{ color: '#CF1322' }}>
               - Không tìm thấy {syncResults.missing.length} nhân viên từ danh bạ
@@ -300,17 +300,17 @@ export default function UserConfig() {
         <div className="form-grid-4">
           <div className="form-group">
             <label>MNV</label>
-            <ComboboxMultiple 
+            <ComboboxMultiple
               options={mnvOptions}
               selected={selectedMnvs}
               onChange={setSelectedMnvs}
               placeholder="Tất cả MNV"
             />
           </div>
-          
+
           <div className="form-group">
             <label>Phòng ban</label>
-            <ComboboxMultiple 
+            <ComboboxMultiple
               options={deptOptions}
               selected={selectedDepts}
               onChange={setSelectedDepts}
@@ -320,7 +320,7 @@ export default function UserConfig() {
 
           <div className="form-group">
             <label>Phân quyền</label>
-            <ComboboxMultiple 
+            <ComboboxMultiple
               options={roleOptions}
               selected={selectedRoles}
               onChange={setSelectedRoles}
@@ -330,7 +330,7 @@ export default function UserConfig() {
 
           <div className="form-group">
             <label>Trạng thái</label>
-            <ComboboxMultiple 
+            <ComboboxMultiple
               options={statusOptions}
               selected={selectedStatuses}
               onChange={setSelectedStatuses}
@@ -363,8 +363,8 @@ export default function UserConfig() {
                   <tr key={user.UserId}>
                     <td className="font-medium">{user.MNV}</td>
                     <td>
-                      <select 
-                        value={user.Role || ''} 
+                      <select
+                        value={user.Role || ''}
                         onChange={(e) => handleUpdateUser(user.UserId, 'Role', e.target.value, user)}
                         style={{
                           fontWeight: '600',
@@ -383,8 +383,8 @@ export default function UserConfig() {
                     <td>{user.Email}</td>
                     <td>{user.Department}</td>
                     <td>
-                      <select 
-                        value={user.IsActive ? '1' : '0'} 
+                      <select
+                        value={user.IsActive ? '1' : '0'}
                         onChange={(e) => handleUpdateUser(user.UserId, 'IsActive', e.target.value === '1', user)}
                         style={{
                           fontWeight: '600',
@@ -435,24 +435,24 @@ export default function UserConfig() {
             <form onSubmit={handleCreateUser}>
               <div className="form-group mb-4">
                 <label>User Name (MNV) <span className="required">*</span></label>
-                <input required type="text" value={newUser.MNV} onChange={e => setNewUser({...newUser, MNV: e.target.value})} />
+                <input required type="text" value={newUser.MNV} onChange={e => setNewUser({ ...newUser, MNV: e.target.value })} />
               </div>
               <div className="form-group mb-4">
                 <label>Mật khẩu <span className="required">*</span></label>
-                <input required type="text" value={newUser.Password} onChange={e => setNewUser({...newUser, Password: e.target.value})} placeholder="Vd: Aa@123456" />
+                <input required type="text" value={newUser.Password} onChange={e => setNewUser({ ...newUser, Password: e.target.value })} placeholder="Vd: Aa@123456" />
               </div>
               <div className="form-group mb-4">
                 <label>Họ tên <span className="required">*</span></label>
-                <input required type="text" value={newUser.FullName} onChange={e => setNewUser({...newUser, FullName: e.target.value})} />
+                <input required type="text" value={newUser.FullName} onChange={e => setNewUser({ ...newUser, FullName: e.target.value })} />
               </div>
               <div className="form-group mb-4">
                 <label>Email</label>
-                <input type="email" value={newUser.Email} onChange={e => setNewUser({...newUser, Email: e.target.value})} />
+                <input type="email" value={newUser.Email} onChange={e => setNewUser({ ...newUser, Email: e.target.value })} />
               </div>
               <div className="form-grid-2 mb-4">
                 <div className="form-group">
                   <label>Phân quyền</label>
-                  <select value={newUser.Role} onChange={e => setNewUser({...newUser, Role: e.target.value})}>
+                  <select value={newUser.Role} onChange={e => setNewUser({ ...newUser, Role: e.target.value })}>
                     <option value="Admin">Admin</option>
                     <option value="BOD">BOD</option>
                     <option value="PRD">PRD</option>
@@ -461,16 +461,16 @@ export default function UserConfig() {
                 </div>
                 <div className="form-group">
                   <label>Phòng ban</label>
-                  <input type="text" value={newUser.Department} onChange={e => setNewUser({...newUser, Department: e.target.value})} />
+                  <input type="text" value={newUser.Department} onChange={e => setNewUser({ ...newUser, Department: e.target.value })} />
                 </div>
               </div>
               <div className="form-group mb-6">
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input type="checkbox" style={{ width: '16px' }} checked={newUser.IsActive} onChange={e => setNewUser({...newUser, IsActive: e.target.checked})} />
+                  <input type="checkbox" style={{ width: '16px' }} checked={newUser.IsActive} onChange={e => setNewUser({ ...newUser, IsActive: e.target.checked })} />
                   Tài khoản đang hoạt động
                 </label>
               </div>
-              
+
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-outline">Hủy</button>
                 <button type="submit" disabled={isCreating} className="btn btn-primary">

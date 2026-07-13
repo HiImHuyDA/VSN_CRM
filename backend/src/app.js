@@ -90,6 +90,7 @@ app.use('/api/task-management', taskManagementRouter);
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/users', require('./routes/users'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));
+app.use('/api/menus', require('./routes/menus'));
 const notificationsModule = require('./routes/notifications');
 const { setSseEmitter } = require('./utils/notification');
 setSseEmitter(notificationsModule.sendSseEvent);

@@ -151,7 +151,7 @@ export default function TopBar({ user, isSidebarCollapsed, setIsSidebarCollapsed
         </button>
         <h1 className="text-base sm:text-2xl font-bold text-primary tracking-tight truncate" title={t('app.title')}>
           <span className="hidden sm:inline">{t('app.title')}</span>
-          <span className="sm:hidden">Lịch Tiếp Khách</span>
+          <span className="sm:hidden">Quản Lý Khách Hàng</span>
         </h1>
       </div>
 

@@ -142,4 +142,14 @@ export const triggerFeedbackCronManually = () =>
 export const triggerFeedbackSyncManually = () =>
   api.post('/feedback/trigger-sync-manually');
 
+// ── Menus & Phân quyền ─────────────────────────────────────────
+export const getMyMenu = () =>
+  api.get('/menus/my-menu');
+
+export const getMenuPermissionsMatrix = () =>
+  api.get('/menus/permissions-matrix');
+
+export const updateMenuPermissions = (menuId, roles) =>
+  api.put(`/menus/${menuId}/permissions`, { roles });
+
 export default api;

@@ -54,13 +54,13 @@ async function processCampaigns() {
         WITH EarliestOnboard AS (
             SELECT Project_id, MIN(OnboardDate) as MinOnboardDate
             FROM CSR_Tasks
-            WHERE IsActive = 1
+            WHERE StatusId = 1
             GROUP BY Project_id
         )
         SELECT p.Project_id, p.CustomerName, p.CustomerType, p.SubmitterName, p.SubmitterEmail, p.MeetingTopic, p.GuestReps, eo.MinOnboardDate
         FROM CSR_Projects p
         JOIN EarliestOnboard eo ON p.Project_id = eo.Project_id
-        WHERE p.Status IN (N'BOD đã duyệt', N'Hoàn thành')
+        WHERE p.StatusId IN (5, 7)
           AND eo.MinOnboardDate = @TargetDate
       `);
 
@@ -116,7 +116,7 @@ async function processCampaigns() {
         // Lấy danh sách nhiệm vụ của đơn để kiểm tra địa điểm và ngày tiếp đón
         const tasksRes = await pool.request()
           .input('ProjectId', sql.NVarChar(100), project.Project_id)
-          .query('SELECT Destination, OnboardDate FROM CSR_Tasks WHERE Project_id = @ProjectId AND IsActive = 1 ORDER BY OnboardDate ASC');
+          .query('SELECT Destination, OnboardDate FROM CSR_Tasks WHERE Project_id = @ProjectId AND StatusId = 1 ORDER BY OnboardDate ASC');
         const projectTasks = tasksRes.recordset || [];
         const projectDestinations = projectTasks.map(t => t.Destination).filter(Boolean);
 
@@ -219,7 +219,7 @@ async function processCampaigns() {
             const custRes = await pool.request()
               .input('Category', sql.NVarChar(50), project.CustomerType)
               .input('Name', sql.NVarChar(200), project.CustomerName)
-              .query('SELECT JsonData FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND IsActive = 1');
+              .query('SELECT JsonData FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND StatusId = 1');
 
             const customerJsonData = custRes.recordset?.[0]?.JsonData;
             if (customerJsonData) {
@@ -377,7 +377,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
   // Lấy các nhiệm vụ của đơn để có Destination và OnboardDate
   const tasksRes = await pool.request()
     .input('ProjectId', sql.NVarChar(100), projectId)
-    .query('SELECT Destination, OnboardDate FROM CSR_Tasks WHERE Project_id = @ProjectId AND IsActive = 1 ORDER BY OnboardDate ASC');
+    .query('SELECT Destination, OnboardDate FROM CSR_Tasks WHERE Project_id = @ProjectId AND StatusId = 1 ORDER BY OnboardDate ASC');
   const projectTasks = tasksRes.recordset || [];
   const projectDestinations = projectTasks.map(t => t.Destination).filter(Boolean);
 
@@ -494,7 +494,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
       const custRes = await pool.request()
         .input('Category', sql.NVarChar(50), project.CustomerType)
         .input('Name', sql.NVarChar(200), project.CustomerName)
-        .query('SELECT JsonData FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND IsActive = 1');
+        .query('SELECT JsonData FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND StatusId = 1');
 
       const customerJsonData = custRes.recordset?.[0]?.JsonData;
       if (customerJsonData) {

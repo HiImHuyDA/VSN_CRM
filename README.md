@@ -1,6 +1,6 @@
-# CSR Web (Customer Service Request) - Quản lý Tiếp Đón Khách Hàng
+# CSR Web (Customer Service Request) - Quản lý Khách Hàng
 
-Ứng dụng quản lý quy trình tiếp đón khách hàng của **Vietsun Corporation**, tích hợp đồng bộ lịch trình ra vào cổng lên SharePoint, phê duyệt nhanh qua Microsoft Teams và hệ thống đánh giá khảo sát khách hàng tự động.
+Ứng dụng quản lý quy trình khách hàng của **Vietsun Corporation**, tích hợp đồng bộ lịch trình ra vào cổng lên SharePoint, phê duyệt nhanh qua Microsoft Teams và hệ thống đánh giá khảo sát khách hàng tự động.
 
 ---
 

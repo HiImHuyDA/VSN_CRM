@@ -98,8 +98,65 @@ Tài liệu này tổng hợp toàn bộ các tính năng đã được hoàn th
 
 ---
 
-## 5. Kết quả Kiểm thử & Biên dịch (Build Status)
-*   **Frontend compilation**: Build thành công 100% bằng Vite/Rolldown (`vite build`).
-*   **Backend integration**: Các file router và scheduler hoạt động đúng đắn.
+## 5. Kiểm tra & Tối ưu hóa các Cron Job Tự động
+
+### 5.1. Job tự động gửi mail thông báo khách tới thăm
+*   **Cơ chế hoạt động**:
+    *   **Khách hàng Brand**: Khi được duyệt, email được gửi tức thời qua `sendApprovalEmail`.
+    *   **Khách đặc biệt (Vãng lai, Ra vào, Partner, Phỏng vấn, Supplier)**: Email được lên lịch trì hoãn (`scheduleApprovalEmail`) lưu vào bảng `CSR_ScheduledEmails` và gửi tự động lúc 16:00 chiều của ngày trước ngày đón tiếp thông qua cron job `startScheduledEmailScheduler` chạy mỗi phút.
+*   **Gửi cho danh sách địa điểm**: Cả hai luồng gửi tức thời và gửi chậm đều chung hàm xử lý `sendApprovalEmail`. Hàm này tự động quét tất cả địa điểm trong lịch trình (`uniqueDestinations`), tra cứu email liên hệ trong bảng `CSR_Locations` (`SELECT NotificationEmails FROM CSR_Locations WHERE Name = @DestName AND StatusId = 1`) và thêm vào danh sách gửi CC.
+
+### 5.2. Job gửi form đánh giá & Đồng bộ kết quả (CSR Feedback System)
+*   **Gửi thư mời tự động**: Cron job `startFeedbackScheduler` chạy lúc 08:30 sáng hàng ngày quét các đơn Brand hoàn thành ngày hôm trước, sinh mã băm token an toàn 64 ký tự và lưu vào `CSR_FeedbackInvitations` đồng thời đẩy sang hàng đợi SharePoint List `CSR_Feedback_Queue` để Power Automate gửi mail.
+*   **Đồng bộ kết quả**: Cron job chạy mỗi 5 phút một lần tự động đọc kết quả đánh giá mới từ SharePoint List `CSR_Feedback_Results` đồng bộ về cơ sở dữ liệu local qua stored procedure `usp_SubmitFeedback`, sau đó xóa item đã xử lý trên SharePoint List để tránh xử lý lặp lại.
+
+### 5.3. Job gửi email chiến dịch chào mừng cho khách hàng Brand
+*   **Sửa lỗi nghiêm trọng (Bug Fix)**: 
+    *   Phát hiện các câu truy vấn SQL trong `campaignScheduler.js` sử dụng cột lỗi `IsActive = 1` (cho bảng `CSR_Tasks`, `CSR_ConfigLists`) và cột `p.Status` (cho bảng `CSR_Projects`).
+    *   Đã thực hiện cập nhật toàn diện sang các cột chính xác theo DB schema: `StatusId = 1` và `p.StatusId IN (5, 7)`.
+*   **Cơ chế hoạt động**: Chạy định kỳ lúc 08:00 sáng hàng ngày, tự động quét tìm các đơn tiếp đón Brand có ngày bắt đầu tiếp đón cách đúng 7 ngày, so khớp với danh sách template chiến dịch chào mừng (`CSR_EmailCampaignTemplates`) và thực hiện gửi mail chào đón kèm thay thế placeholder tự động qua Microsoft Graph API.
+
+---
+
+## 6. Tái Cấu Trúc Menu Theo Nhóm & Phân Quyền Động
+
+Hệ thống menu đã được cấu trúc lại hoàn toàn dựa trên mô hình động lưu trữ trong cơ sở dữ liệu với 2 bảng liên kết: `CSR_Menus` và `CSR_RolePermissions`.
+
+### 6.1. Cấu trúc Menu mới trong Sidebar
+*   **Quản Lý Tiếp Khách** (Menu chính `guest`): Chứa toàn bộ các chức năng nghiệp vụ tiếp đón khách và các chức năng cấu hình danh mục liên quan (DS Công việc, DS Địa điểm, DS Khách hàng, Email Marketing, Nhà hàng, Phòng họp) nằm trong tiểu mục **Cấu hình** con.
+*   **Quản Lý Xe** (Menu chính `vehicle`): Trực quan hóa và chứa trang placeholder **Quản Lý Xe** (`/vehicle`).
+*   **Cấu hình hệ thống** (Menu chính `system-config` - Chỉ Admin): Chứa các chức năng quản trị hệ thống cốt lõi: DS Tài khoản, Lịch sử hệ thống và Phân quyền Menu.
+
+### 6.2. Trang quản trị Phân Quyền Menu nâng cao (Menu Permissions Config)
+*   **Cố định Tiêu đề cột & Cuộn thân bảng (Sticky Header & Scrollable Body)**:
+    *   Bọc bảng trong một wrapper `overflow-y-auto max-h-[calc(100vh-220px)]` kèm lớp scrollbar tùy biến (`custom-scrollbar`) giúp giao diện gọn gàng và không làm tràn trang.
+    *   Thiết lập thuộc tính `sticky top-0 z-10 bg-surface-container-lowest` cho các thẻ tiêu đề `th` để khi cuộn danh sách menu dài xuống dưới, tiêu đề các vai trò (`BOD`, `PRD`, `User`) vẫn được cố định ở trên cùng giúp dễ quan sát.
+*   **Mặc định toàn quyền cho Admin**:
+    *   Cập nhật cơ chế ở Database (Migration 74 - `usp_GetMyMenu`): Khi Role của tài khoản là `Admin`, hệ thống sẽ tự động trả về toàn bộ danh sách menu đang hoạt động mà không cần đối chiếu hay kiểm tra bảng `CSR_RolePermissions`.
+    *   **Loại bỏ cột cấu hình Admin trên giao diện**: Ẩn/loại bỏ hoàn toàn cột `Admin` trong bảng ma trận phân quyền, chỉ giữ lại các cột cần phân quyền gồm `BOD`, `PRD`, `User`. Điều này vừa giảm dư thừa dữ liệu vừa ngăn ngừa lỗi Admin tự khóa mình khỏi các chức năng quan trọng.
+*   **Thiết kế cao cấp (Premium Checkbox UI)**: Thay thế checkbox mặc định của trình duyệt bằng custom checkbox được bo góc nhẹ, viền xám tinh tế, có hiệu ứng chuyển động mượt mà (smooth hover & focus transition), chuyển sang màu xanh lá thương hiệu (`bg-primary`) kèm dấu tích SVG rõ nét và thu nhỏ/phóng to động (`scale-105`) khi được kích hoạt.
+*   **Tính năng Thu gọn & Mở rộng toàn bộ (Collapse/Expand All)**:
+    *   Hỗ trợ nút bấm **Mở rộng tất cả** và **Thu gọn tất cả** ở góc trên thanh công cụ để người quản trị thao tác nhanh.
+    *   Mỗi dòng nhóm menu chính trong bảng (ví dụ: *Quản Lý Tiếp Khách*, *Cấu hình*, *Quản Lý Xe*) đều có icon mũi tên `expand_more` / `chevron_right` bên cạnh để đóng/mở thủ công, ẩn hoặc hiển thị các menu con một cách trực quan.
+*   **Lan truyền phân quyền tự động (Cascading Permissions)**:
+    *   **Loang xuống (Descendants Cascade)**: Khi tích chọn hoặc bỏ tích phân quyền một Nhóm menu lớn cho một Role, hệ thống sẽ tự động bật hoặc tắt quyền của toàn bộ các menu con trực thuộc bên dưới Role đó và tự động cập nhật xuống cơ sở dữ liệu.
+    *   **Kéo lên (Ancestors Cascade)**: Khi Admin tích chọn một menu con bất kỳ cho một Role, hệ thống sẽ tự động tích chọn cả nhóm menu cha tương ứng của nó để đảm bảo hiển thị đúng cấu trúc cây ở Sidebar, tránh lỗi thiếu nhóm.
+
+### 6.3. Tối ưu hóa phông chữ Sidebar
+    *   Mỗi dòng nhóm menu chính trong bảng (ví dụ: *Quản Lý Tiếp Khách*, *Cấu hình*, *Quản Lý Xe*) đều có icon mũi tên `expand_more` / `chevron_right` bên cạnh để đóng/mở thủ công, ẩn hoặc hiển thị các menu con một cách trực quan.
+*   **Lan truyền phân quyền tự động (Cascading Permissions)**:
+    *   **Loang xuống (Descendants Cascade)**: Khi tích chọn hoặc bỏ tích phân quyền một Nhóm menu lớn cho một Role, hệ thống sẽ tự động bật hoặc tắt quyền của toàn bộ các menu con trực thuộc bên dưới Role đó và tự động cập nhật xuống cơ sở dữ liệu.
+    *   **Kéo lên (Ancestors Cascade)**: Khi Admin tích chọn một menu con bất kỳ cho một Role, hệ thống sẽ tự động tích chọn cả nhóm menu cha tương ứng của nó để đảm bảo hiển thị đúng cấu trúc cây ở Sidebar, tránh lỗi thiếu nhóm.
+
+### 6.3. Tối ưu hóa phông chữ Sidebar
+*   **Kích thước văn bản**: Đã đồng bộ kích thước chữ của mục tiêu nhóm con **Cấu hình** (bên trong nhóm Quản Lý Tiếp Khách) từ cỡ chữ nhỏ `text-xs` lên cỡ chữ chuẩn `text-sm` (`font-semibold text-sm uppercase tracking-wider`) để đồng bộ tuyệt đối về mặt thẩm mỹ với các menu chính khác.
+
+---
+
+## 7. Kết quả Kiểm thử & Biên dịch (Build Status)
+*   **Frontend compilation**: Biên dịch và build thành công 100% bằng Vite/Rolldown (`vite build`) chỉ trong **12.63 giây** mà không gặp bất kỳ lỗi nào.
+*   **Backend integration**: Các API động kiểm tra quyền (`/api/menus/my-menu`, `/api/menus/permissions-matrix`) chạy trơn tru với stored procedures mới.
 *   **PM2 process status**: Đã khởi động lại toàn bộ service thành công.
+*   **Kiểm thử Campaign**: Chạy lệnh test `node scripts/tests/run_campaign_check.js` thành công và không còn bất kỳ lỗi truy vấn SQL nào.
 *   **Kết quả dữ liệu**: Đơn số `6` (Brand) và đơn số `1` (Ứng viên phỏng vấn) hiển thị chính xác trên cả Lịch tiếp đón và Tổng quan (Dashboard).
+

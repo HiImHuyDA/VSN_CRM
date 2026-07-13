@@ -34,9 +34,8 @@ const KpiCard = ({ icon, label, value, colorClass = "text-primary", mom, yoy, su
     if (val === undefined || val === null) return null;
     const isPositive = val >= 0;
     return (
-      <span className={`inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full ${
-        isPositive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-      }`}>
+      <span className={`inline-flex items-center gap-0.5 text-xs font-bold px-2 py-0.5 rounded-full ${isPositive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+        }`}>
         {type}: {isPositive ? '↑' : '↓'} {Math.abs(val)}%
       </span>
     );
@@ -60,7 +59,7 @@ const KpiCard = ({ icon, label, value, colorClass = "text-primary", mom, yoy, su
 
 export default function Reports() {
   const [activeTab, setActiveTab] = useState('summary'); // summary | review | progress
-  
+
   // States cho bộ lọc
   const [filters, setFilters] = useState({
     years: [],
@@ -284,8 +283,8 @@ export default function Reports() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200">
         {[
-          { id: 'summary',  label: '📈 Thống kê tiếp đón', icon: 'analytics' },
-          { id: 'review',   label: '⭐ Đánh giá khách hàng', icon: 'rate_review' },
+          { id: 'summary', label: '📈 Thống kê tiếp đón', icon: 'analytics' },
+          { id: 'review', label: '⭐ Đánh giá khách hàng', icon: 'rate_review' },
           { id: 'progress', label: '⏳ Báo cáo tiến độ', icon: 'checklist' },
         ].map(tab => (
           <button
@@ -294,11 +293,10 @@ export default function Reports() {
               setActiveTab(tab.id);
               setData(null);
             }}
-            className={`flex items-center gap-2 px-6 py-4 text-sm font-extrabold border-b-2 transition-all ${
-              activeTab === tab.id
+            className={`flex items-center gap-2 px-6 py-4 text-sm font-extrabold border-b-2 transition-all ${activeTab === tab.id
                 ? 'border-primary text-primary bg-primary/5 rounded-t-xl'
                 : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
-            }`}
+              }`}
           >
             <span className="material-symbols-outlined text-lg">{tab.icon}</span>
             {tab.label}
@@ -318,7 +316,7 @@ export default function Reports() {
         </div>
       ) : (
         <div className="space-y-6">
-          
+
           {/* TAB 1: THỐNG KÊ TIẾP ĐÓN */}
           {activeTab === 'summary' && (
             <div className="space-y-6">
@@ -353,7 +351,7 @@ export default function Reports() {
 
               {/* Charts Row 1 */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
+
                 {/* Column Chart 1 */}
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm lg:col-span-2">
                   <h3 className="font-bold text-gray-800 text-lg mb-4">Số đơn tiếp đón (Tổng cộng)</h3>
@@ -368,8 +366,8 @@ export default function Reports() {
                         }))}>
                           <defs>
                             <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05}/>
+                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.05} />
                             </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -517,7 +515,7 @@ export default function Reports() {
                         <th className="py-3 px-5 text-xs font-bold text-gray-500 uppercase">Loại</th>
                         <th className="py-3 px-5 text-xs font-bold text-gray-500 uppercase">Chủ đề họp</th>
                         <th className="py-3 px-5 text-xs font-bold text-gray-500 uppercase">Người đề xuất</th>
-                        <th className="py-3 px-5 text-xs font-bold text-gray-500 uppercase">Ngày onboard</th>
+                        <th className="py-3 px-5 text-xs font-bold text-gray-500 uppercase">Ngày tiếp đón</th>
                         <th className="py-3 px-5 text-xs font-bold text-gray-500 uppercase text-center">Trạng thái</th>
                       </tr>
                     </thead>
@@ -535,12 +533,11 @@ export default function Reports() {
                           <td className="py-3 px-5 text-gray-600 font-medium">{item.SubmitterName}</td>
                           <td className="py-3 px-5 text-gray-600 font-bold">{item.OnboardDates || '—'}</td>
                           <td className="py-3 px-5 text-center">
-                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-extrabold ${
-                              item.Status === 'Hoàn thành' ? 'bg-green-50 text-green-700' :
-                              item.Status === 'BOD đã duyệt' ? 'bg-purple-50 text-purple-700' :
-                              item.Status === 'Chờ phản hồi' || item.Status === 'Đã gửi-Chờ phản hồi' ? 'bg-blue-50 text-blue-700' :
-                              'bg-gray-100 text-gray-600'
-                            }`}>
+                            <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-extrabold ${item.Status === 'Hoàn thành' ? 'bg-green-50 text-green-700' :
+                                item.Status === 'BOD đã duyệt' ? 'bg-purple-50 text-purple-700' :
+                                  item.Status === 'Chờ phản hồi' || item.Status === 'Đã gửi-Chờ phản hồi' ? 'bg-blue-50 text-blue-700' :
+                                    'bg-gray-100 text-gray-600'
+                              }`}>
                               {item.Status}
                             </span>
                           </td>
@@ -586,7 +583,7 @@ export default function Reports() {
 
               {/* Top & Bottom Criteria side-by-side */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
+
                 {/* Top Criteria */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                   <h3 className="font-bold text-emerald-600 text-lg mb-4 flex items-center gap-1.5">
@@ -707,11 +704,11 @@ export default function Reports() {
             <div className="space-y-6">
               {/* Row 1: Pie charts tiến độ */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
+
                 {/* Tiến độ gửi đơn tiếp đón */}
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center">
                   <h3 className="font-bold text-gray-800 text-lg mb-2 w-full text-left uppercase">Tiến độ gửi đơn tiếp đón</h3>
-                  
+
                   <div className="h-[220px] w-full relative">
                     {(!data.submissionProgress.OntimeCount && !data.submissionProgress.DelayCount) ? (
                       <div className="flex items-center justify-center h-full text-gray-400 font-semibold">Chưa có đơn hàng nào</div>
@@ -738,7 +735,7 @@ export default function Reports() {
                       </ResponsiveContainer>
                     )}
                   </div>
-                  
+
                   <div className="flex justify-center gap-6 mt-4 w-full">
                     <div className="text-center">
                       <p className="text-xs font-bold text-gray-400 uppercase">Ontime</p>
@@ -760,7 +757,7 @@ export default function Reports() {
                 {/* Tiến độ hoàn thành công việc */}
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center">
                   <h3 className="font-bold text-gray-800 text-lg mb-2 w-full text-left uppercase">Tiến độ chuẩn bị công việc</h3>
-                  
+
                   <div className="h-[220px] w-full relative">
                     {(!data.taskProgress.OntimeCount && !data.taskProgress.DelayCount) ? (
                       <div className="flex items-center justify-center h-full text-gray-400 font-semibold">Chưa có công việc nào</div>
@@ -787,7 +784,7 @@ export default function Reports() {
                       </ResponsiveContainer>
                     )}
                   </div>
-                  
+
                   <div className="flex justify-center gap-6 mt-4 w-full">
                     <div className="text-center">
                       <p className="text-xs font-bold text-gray-400 uppercase">Ontime</p>
@@ -810,13 +807,13 @@ export default function Reports() {
 
               {/* Row 2: Charts tỷ lệ Ontime vs Delay */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
+
                 {/* Top Team Ontime */}
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                   <h3 className="font-bold text-gray-800 text-lg mb-4 uppercase">Tỷ lệ ontime công việc theo team</h3>
                   <div className="h-[280px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={[...data.departmentProgress].sort((a,b) => b.OntimeRate - a.OntimeRate).slice(0, 10)}>
+                      <BarChart data={[...data.departmentProgress].sort((a, b) => b.OntimeRate - a.OntimeRate).slice(0, 10)}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                         <XAxis dataKey="Department" tick={{ fontSize: 11, fontWeight: 'bold' }} />
                         <YAxis tick={{ fontSize: 11 }} />
@@ -832,7 +829,7 @@ export default function Reports() {
                   <h3 className="font-bold text-gray-800 text-lg mb-4 uppercase">Tỷ lệ delay công việc theo team</h3>
                   <div className="h-[280px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={[...data.departmentProgress].sort((a,b) => b.DelayRate - a.DelayRate).slice(0, 10)}>
+                      <BarChart data={[...data.departmentProgress].sort((a, b) => b.DelayRate - a.DelayRate).slice(0, 10)}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                         <XAxis dataKey="Department" tick={{ fontSize: 11, fontWeight: 'bold' }} />
                         <YAxis tick={{ fontSize: 11 }} />
