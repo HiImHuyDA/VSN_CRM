@@ -28,10 +28,24 @@ const TASK_ICONS = {
 };
 
 // Task nào dùng field đặc biệt
-const isCarTask     = n => n.includes('xe') || n.includes('Xe');
-const isFlightTask  = n => n.includes('vé máy bay') || n.includes('Vé máy bay');
-const isMealTask    = n => n.includes('cơm trưa') || n.includes('nhà hàng');
-const isRoomTask    = n => n.includes('Phòng Họp') || n.includes('phòng họp') || n.includes('Phòng họp');
+// isCarTask: các task "Chuẩn bị xe..." CẦN khai báo loại phương tiện + số người đi,
+// NGOẠI TRỪ "Chuẩn bị xe (từ sân bay)" - task này không cần khai báo 2 field đó.
+const isCarTask = n => (n.includes('xe') || n.includes('Xe')) && !n.includes('từ sân bay');
+const isFlightTask = n => n.includes('vé máy bay') || n.includes('Vé máy bay');
+const isMealTask = n => n.includes('cơm trưa') || n.includes('nhà hàng');
+// isBookRoomTask: CHỈ áp dụng cho task "Book Phòng Họp" - có chọn phòng, giờ họp, check lịch trống.
+// "Chuẩn bị phòng họp" / "Phòng họp" (task khác) KHÔNG cần các field này.
+const isBookRoomTask = n => n.includes('Book Phòng Họp') || n.includes('Book phòng họp');
+
+// Danh sách loại phương tiện cho combobox "Chuẩn bị xe"
+const VEHICLE_TYPES = [
+  'Xe công ty',
+  'Máy bay',
+  'Tàu hỏa',
+  'Xe khách',
+  'Xe thuê ngoài (Grab/Taxi)',
+  'Tự túc',
+];
 
 export default function TaskCard({
   task,
@@ -67,14 +81,14 @@ export default function TaskCard({
   // Lấy các đề xuất nhà hàng ăn tối
   const getRecommendedRestaurants = () => {
     if (!configLists.dinnerRaw) return [];
-    
+
     // 1. Phân loại Level từ chức vụ
     const getLevelFromTitle = (title) => {
       if (!title) return 3;
       const t = title.toLowerCase().trim();
       const level1Aliases = ['ceo', 'founder', 'chairman', 'president', 'bod', 'chief executive officer', 'chủ tịch', 'tổng giám đốc'];
       const level2Aliases = [
-        'director', 'vp', 'vice president', 'coo', 'chief operation officer', 'chief operating officer', 
+        'director', 'vp', 'vice president', 'coo', 'chief operation officer', 'chief operating officer',
         'head', 'head manager', 'giám đốc kinh doanh', 'giám đốc', 'trưởng bộ phận', 'cdo', 'cfo', 'cto'
       ];
       if (level1Aliases.some(alias => t.includes(alias))) return 1;
@@ -85,7 +99,7 @@ export default function TaskCard({
     let reps = [];
     if (guestReps) {
       if (typeof guestReps === 'string') {
-        try { reps = JSON.parse(guestReps); } catch(e){}
+        try { reps = JSON.parse(guestReps); } catch (e) { }
       } else if (Array.isArray(guestReps)) {
         reps = guestReps;
       }
@@ -108,8 +122,8 @@ export default function TaskCard({
     // 3. Parse thông tin nhà hàng và tính toán độ khớp
     const parsedRestaurants = configLists.dinnerRaw.map(item => {
       let meta = {};
-      try { meta = item.JsonData ? JSON.parse(item.JsonData) : {}; } catch(e){}
-      
+      try { meta = item.JsonData ? JSON.parse(item.JsonData) : {}; } catch (e) { }
+
       const rName = item.Name;
       const rLevel = String(meta.level || '').toLowerCase();
       const rCuisine = meta.cuisine || '';
@@ -157,7 +171,7 @@ export default function TaskCard({
 
   let restMeta = {};
   if (selectedRestaurant && selectedRestaurant.JsonData) {
-    try { restMeta = JSON.parse(selectedRestaurant.JsonData); } catch(e){}
+    try { restMeta = JSON.parse(selectedRestaurant.JsonData); } catch (e) { }
   }
 
   const autoSemicolon = (val, prevVal = '') => {
@@ -165,7 +179,7 @@ export default function TaskCard({
     if (val.length < prevVal.length) return val;
     const lower = val.toLowerCase();
     if ((lower.endsWith('.com') && !prevVal.toLowerCase().endsWith('.com')) ||
-        (lower.endsWith('.vn') && !prevVal.toLowerCase().endsWith('.vn'))) {
+      (lower.endsWith('.vn') && !prevVal.toLowerCase().endsWith('.vn'))) {
       return val + '; ';
     }
     return val;
@@ -179,7 +193,7 @@ export default function TaskCard({
           <input
             type="checkbox"
             checked={true}
-            onChange={() => {}} // onClick on container handles it
+            onChange={() => { }} // onClick on container handles it
             style={{ width: 'auto', marginRight: 8, cursor: 'pointer' }}
           />
           <span>{icon}</span>
@@ -209,16 +223,16 @@ export default function TaskCard({
                 <span className="material-symbols-outlined" style={{ fontSize: 18 }}>person</span>
                 {label}
               </div>
-              
+
               <div className="form-group mb-3">
                 <label style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Tìm kiếm từ danh bạ VSN (tự điền tên & email)</label>
                 <AutocompleteInput
                   value=""
-                  onChange={() => {}}
+                  onChange={() => { }}
                   onSelect={item => {
                     if (isMultiple) {
-                      const names = (task[nameField] || '').split(',').map(s=>s.trim()).filter(Boolean);
-                      const emails = (task[emailField] || '').split(';').map(s=>s.trim()).filter(Boolean);
+                      const names = (task[nameField] || '').split(',').map(s => s.trim()).filter(Boolean);
+                      const emails = (task[emailField] || '').split(';').map(s => s.trim()).filter(Boolean);
                       if (!names.includes(item.label)) {
                         names.push(item.label);
                         if (item.email) emails.push(item.email);
@@ -275,15 +289,17 @@ export default function TaskCard({
         {isCarTask(task.taskName) && (<>
           <div className="form-group">
             <label>Loại phương tiện</label>
-            <input type="text" value={task.vehicle || ''}
-              onChange={e => set('vehicle', e.target.value)}
-              placeholder="VD: Xe 7 chỗ, Xe công ty..." />
+            <select value={task.vehicle || ''}
+              onChange={e => set('vehicle', e.target.value)}>
+              <option value="">-- Chọn --</option>
+              {VEHICLE_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
           </div>
           <div className="form-group">
             <label>Số người đi</label>
             <input type="text" value={task.passengerCount || ''}
               onChange={e => set('passengerCount', e.target.value)}
-              placeholder="VD: 4 người" />
+              placeholder="VD: 4" />
           </div>
           <div className="form-group">
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -362,11 +378,10 @@ export default function TaskCard({
                       key={r.name}
                       type="button"
                       onClick={() => set('mealOption', r.name)}
-                      className={`px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer font-medium ${
-                        task.mealOption === r.name
+                      className={`px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer font-medium ${task.mealOption === r.name
                           ? 'bg-primary/10 border-primary text-primary font-bold'
                           : 'bg-white hover:bg-surface-container-low border-outline-variant text-on-surface'
-                      }`}
+                        }`}
                     >
                       {r.name.split('-')[1] || r.name} {/* Chỉ hiển thị tên ngắn gọn */}
                       {r.isBookedBefore && <span className="ml-1 text-[10px] text-primary/80">({r.bookCount}L)</span>}
@@ -404,8 +419,8 @@ export default function TaskCard({
           </div>
         )}
 
-        {/* Phòng họp */}
-        {isRoomTask(task.taskName) && (<>
+        {/* Phòng họp - CHỈ áp dụng cho task "Book Phòng Họp", không áp dụng cho "Chuẩn bị phòng họp" */}
+        {isBookRoomTask(task.taskName) && (<>
           <div className="form-group">
             <label>Phòng họp</label>
             <select value={task.meetingRoom || ''}

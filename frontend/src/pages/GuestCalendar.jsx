@@ -215,6 +215,7 @@ export default function GuestCalendar() {
   const [filterLocation, setFilterLocation] = useState([]);
   const [filterStatus, setFilterStatus] = useState([]);
   const [filterDate, setFilterDate] = useState([]);
+  const [filterCustomerType, setFilterCustomerType] = useState([]);
 
   const currentUser = (() => { try { return JSON.parse(localStorage.getItem('csr_user')); } catch { return null; } })();
 
@@ -242,6 +243,7 @@ export default function GuestCalendar() {
     setFilterLocation([]);
     setFilterStatus([]);
     setFilterDate([]);
+    setFilterCustomerType([]);
   }, [monthStr]);
 
   const weeks = useMemo(() => getMonthMatrix(year, month), [year, month]);
@@ -307,6 +309,8 @@ export default function GuestCalendar() {
     return [...allDates].sort().map(d => isoToDisplay(d));
   }, [submissions]);
 
+  const customerTypeOptions = useMemo(() => ['Brand', 'Partner', 'Nhà cung cấp', 'Khách vãng lai', 'Ứng viên phỏng vấn'], []);
+
   // Filter submissions by slicers
   const filteredSubmissions = useMemo(() => {
     return submissions.filter(sub => {
@@ -319,9 +323,14 @@ export default function GuestCalendar() {
           : sub.onboardDate ? [isoToDisplay(sub.onboardDate)] : [];
         return filterDate.some(fd => subDates.includes(fd));
       })();
-      return matchCustomer && matchLocation && matchStatus && matchDate;
+      const matchCustomerType = filterCustomerType.length === 0 || filterCustomerType.some(type => {
+        const typeInDb = sub.customerType || '';
+        const label = typeInDb === 'Supplier' ? 'Nhà cung cấp' : typeInDb;
+        return label.toLowerCase() === type.toLowerCase();
+      });
+      return matchCustomer && matchLocation && matchStatus && matchDate && matchCustomerType;
     });
-  }, [submissions, filterCustomer, filterLocation, filterStatus, filterDate]);
+  }, [submissions, filterCustomer, filterLocation, filterStatus, filterDate, filterCustomerType]);
 
   // Group dates of each filtered submission into contiguous segments and build spanning events
   const spanningEvents = useMemo(() => {
@@ -679,10 +688,14 @@ export default function GuestCalendar() {
           </h2>
 
           {/* Slicers */}
-          <div className="bg-white border border-outline-variant rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-4 items-end shadow-sm">
+          <div className="bg-white border border-outline-variant rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-5 gap-4 items-end shadow-sm">
             <div>
               <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Khách hàng</label>
               <ComboboxMultiple options={customerOptions} selected={filterCustomer} onChange={setFilterCustomer} placeholder="Tất cả Khách hàng" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Loại khách hàng</label>
+              <ComboboxMultiple options={customerTypeOptions} selected={filterCustomerType} onChange={setFilterCustomerType} placeholder="Tất cả Loại khách" />
             </div>
             <div>
               <label className="block text-xs font-bold text-on-surface-variant mb-1 uppercase tracking-wider">Địa điểm</label>

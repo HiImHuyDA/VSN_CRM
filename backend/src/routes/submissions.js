@@ -206,7 +206,7 @@ router.post('/', authenticateToken, async (req, res, next) => {
     if (Array.isArray(tasks)) {
       for (const t of tasks) {
         const taskNameLower = (t.taskName || '').toLowerCase();
-        if (taskNameLower.includes('xe')) {
+        if (taskNameLower.includes('xe') && !taskNameLower.includes('từ sân bay')) {
           if (!t.vehicle || !String(t.vehicle).trim() || !t.passengerCount || !String(t.passengerCount).trim()) {
             return res.status(400).json({
               success: false,
@@ -317,7 +317,7 @@ router.put('/:projectId', authenticateToken, async (req, res, next) => {
     if (Array.isArray(tasks)) {
       for (const t of tasks) {
         const taskNameLower = (t.taskName || '').toLowerCase();
-        if (taskNameLower.includes('xe')) {
+        if (taskNameLower.includes('xe') && !taskNameLower.includes('từ sân bay')) {
           if (!t.vehicle || !String(t.vehicle).trim() || !t.passengerCount || !String(t.passengerCount).trim()) {
             return res.status(400).json({
               success: false,

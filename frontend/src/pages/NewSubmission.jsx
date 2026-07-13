@@ -317,7 +317,7 @@ export default function NewSubmission({ currentUser }) {
         }
         // Task "Chuẩn bị xe": bắt buộc phải khai báo loại phương tiện và số người đi
         const taskNameLower = (t.taskName || '').toLowerCase();
-        if (taskNameLower.includes('xe')) {
+        if (taskNameLower.includes('xe') && !taskNameLower.includes('từ sân bay')) {
           if (!t.vehicle || !t.vehicle.trim()) {
             toast.error(`Vui lòng nhập Loại phương tiện cho công việc "${t.taskName}" tại ${t.destination}`);
             return;

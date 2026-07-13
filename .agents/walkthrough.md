@@ -76,7 +76,30 @@ Tài liệu này tổng hợp toàn bộ các tính năng đã được hoàn th
 
 ---
 
-## 3. Kết quả Kiểm thử & Biên dịch (Build Status)
+## 3. Sửa Lỗi Lịch Tiếp Khách Cho Đơn Bản Ghi Chỉnh Sửa (RecordType = 2)
+
+### 3.1. Database Migration: [71_fix_project_version_calendar_complete.sql](file:///d:/PM%20-%20PD%20Rev/project/csr-web/backend/database/migrations/71_fix_project_version_calendar_complete.sql)
+*   **usp_GetGuestCalendar**: 
+    *   Sử dụng subquery/CTE `LatestProjects` lọc phiên bản mới nhất của mỗi đơn hàng (`rn = 1` từ `Version DESC`) thay vì lọc cứng điều kiện `RecordType = 1`.
+    *   **Bộ lọc Loại khách hàng**: Tích hợp bộ lọc nhiều lựa chọn `ComboboxMultiple` trên giao diện [GuestCalendar.jsx](file:///d:/PM%20-%20PD%20Rev/project/csr-web/frontend/src/pages/GuestCalendar.jsx) cho phép lọc các loại khách hàng (Brand, Partner, Nhà cung cấp, Khách vãng lai, Ứng viên phỏng vấn) đồng bộ với lịch và bảng thống kê.
+*   **usp_Submission_GetDetail**: Cho phép tự động cập nhật Hoàn thành (`StatusId = 7`) đối với cả đơn đã chỉnh sửa (`RecordType IN (1, 2)`).
+*   **usp_Submission_List**: Cho phép tự động cập nhật Hoàn thành hàng loạt đối với cả đơn đã chỉnh sửa (`RecordType IN (1, 2)`).
+
+---
+
+## 4. Sửa Lỗi Thống Kê Tổng Quan (Dashboard) Cho Đơn Không Có Task & Lọc Trạng Thái
+
+### 4.1. Database Migration: [72_fix_dashboard_get_stats_version_taskless.sql](file:///d:/PM%20-%20PD%20Rev/project/csr-web/backend/database/migrations/72_fix_dashboard_get_stats_version_taskless.sql)
+*   **usp_Dashboard_GetStats**:
+    *   Sử dụng bảng tạm `#LatestProjects` để lấy phiên bản mới nhất của mỗi đơn tiếp đón (hỗ trợ các đơn đã chỉnh sửa).
+    *   Tạo bảng tạm `#DateDest` gộp ngày đi và địa điểm từ cả 2 nguồn: `CSR_Tasks` (đối với đơn có task) và `AgendaJsonData` (đối với đơn không có task).
+    *   Thay thế toàn bộ liên kết `INNER JOIN CSR_Tasks` bằng việc kết nối qua `#DateDest`, từ đó hiển thị và thống kê chính xác các đơn không có task (như Ứng viên phỏng vấn).
+    *   Cập nhật tất cả các điều kiện lọc trạng thái của đơn tiếp đón hiển thị trên màn hình Tổng quan thành: **Chờ phản hồi (8), PRD đã duyệt (4), BOD đã duyệt (5) và Hoàn thành (7)**.
+
+---
+
+## 5. Kết quả Kiểm thử & Biên dịch (Build Status)
 *   **Frontend compilation**: Build thành công 100% bằng Vite/Rolldown (`vite build`).
-*   **Backend integration**: Các file router và scheduler đã được đăng ký thành công vào luồng chạy chính trong [app.js](file:///D:/PM%20-%20PD%20Rev/project/csr-web/backend/src/app.js).
+*   **Backend integration**: Các file router và scheduler hoạt động đúng đắn.
 *   **PM2 process status**: Đã khởi động lại toàn bộ service thành công.
+*   **Kết quả dữ liệu**: Đơn số `6` (Brand) và đơn số `1` (Ứng viên phỏng vấn) hiển thị chính xác trên cả Lịch tiếp đón và Tổng quan (Dashboard).
