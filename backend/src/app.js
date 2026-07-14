@@ -28,6 +28,7 @@ const feedbackRouter = require('./routes/feedback');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
 const { startCampaignScheduler } = require('./utils/campaignScheduler');
 const { startFeedbackScheduler } = require('./utils/feedbackScheduler');
+const fleetRouter = require('./routes/fleet');
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use('/api/feedback', feedbackRouter);
 app.use('/api/users', require('./routes/users'));
 app.use('/api/audit-logs', require('./routes/auditLogs'));
 app.use('/api/menus', require('./routes/menus'));
+app.use('/api/fleet', fleetRouter);
 const notificationsModule = require('./routes/notifications');
 const { setSseEmitter } = require('./utils/notification');
 setSseEmitter(notificationsModule.sendSseEvent);

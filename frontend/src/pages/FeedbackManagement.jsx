@@ -189,10 +189,10 @@ export default function FeedbackManagement() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-on-surface mb-1">Quản lý Phản Hồi Khách Hàng</h2>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Quản lý Phản Hồi Khách Hàng</h1>
         </div>
         <div className="flex gap-2">
           <button
@@ -333,16 +333,16 @@ export default function FeedbackManagement() {
         {loading ? (
           <div className="p-8 text-center text-on-surface-variant text-sm font-semibold">Đang tải dữ liệu...</div>
         ) : activeTab === 'invitations' ? (
-          <div className="overflow-x-auto">
-            <table className="data-table">
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+            <table className="data-table border-collapse">
               <thead>
                 <tr>
-                  <th>Mã đơn</th>
-                  <th>Khách hàng</th>
-                  <th>Người nhận email</th>
-                  <th>Hạn dùng</th>
-                  <th>Trạng thái</th>
-                  <th style={{ width: 140 }}>Thao tác</th>
+                  <th className="sticky top-0 z-10 bg-white">Mã đơn</th>
+                  <th className="sticky top-0 z-10 bg-white">Khách hàng</th>
+                  <th className="sticky top-0 z-10 bg-white">Người nhận email</th>
+                  <th className="sticky top-0 z-10 bg-white">Hạn dùng</th>
+                  <th className="sticky top-0 z-10 bg-white">Trạng thái</th>
+                  <th className="sticky top-0 z-10 bg-white" style={{ width: 140 }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -412,16 +412,16 @@ export default function FeedbackManagement() {
             </table>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+            <table className="data-table border-collapse">
               <thead>
                 <tr>
-                  <th>Mã đơn</th>
-                  <th>Khách hàng</th>
-                  <th>Người đánh giá</th>
-                  <th>Điểm Overall</th>
-                  <th>Ý kiến bình luận</th>
-                  <th>Ngày nộp</th>
+                  <th className="sticky top-0 z-10 bg-white">Mã đơn</th>
+                  <th className="sticky top-0 z-10 bg-white">Khách hàng</th>
+                  <th className="sticky top-0 z-10 bg-white">Người đánh giá</th>
+                  <th className="sticky top-0 z-10 bg-white">Điểm Overall</th>
+                  <th className="sticky top-0 z-10 bg-white">Ý kiến bình luận</th>
+                  <th className="sticky top-0 z-10 bg-white">Ngày nộp</th>
                 </tr>
               </thead>
               <tbody>

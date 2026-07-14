@@ -22,7 +22,9 @@ import MenuPermissionsConfig from './pages/config/MenuPermissionsConfig';
 import TaskManagement from './pages/TaskManagement';
 import CustomerEvaluation from './pages/CustomerEvaluation';
 import FeedbackManagement from './pages/FeedbackManagement';
-import VehicleManagementDashboard from './pages/VehicleManagementDashboard';
+import VehicleBookingList from './pages/vehicle/VehicleBookingList';
+import VehicleBookingNew from './pages/vehicle/VehicleBookingNew';
+import VehicleConfig from './pages/vehicle/VehicleConfig';
 import { getMyMenu } from './services/api';
 
 // Map MenuKey (không đổi dù đổi tên hiển thị) -> component tương ứng.
@@ -41,7 +43,9 @@ const MENU_KEY_COMPONENT = {
   'guest.config.email-campaigns': (auth) => <EmailCampaignConfig />,
   'guest.config.restaurants': (auth) => <RestaurantConfig />,
   'guest.config.meeting-rooms': (auth) => <MeetingRoomConfig />,
-  'vehicle.dashboard': (auth) => <VehicleManagementDashboard />,
+  'vehicle.dashboard': (auth) => <VehicleBookingList currentUser={auth} />,
+  'vehicle.new': (auth) => <VehicleBookingNew />,
+  'vehicle.config': (auth) => <VehicleConfig />,
   'system-config.users': (auth) => <UserConfig />,
   'system-config.audit-logs': (auth) => <AuditLogs />,
   'system-config.menu-permissions': (auth) => <MenuPermissionsConfig />,

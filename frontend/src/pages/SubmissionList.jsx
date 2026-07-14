@@ -348,7 +348,7 @@ export default function SubmissionList() {
   // Sortable header helper
   const SortableTh = ({ columnKey, label }) => (
     <th
-      className="px-4 py-2 text-xs font-bold text-on-surface-variant cursor-pointer select-none hover:text-primary transition-colors"
+      className="px-4 py-2 text-xs font-bold text-on-surface-variant cursor-pointer select-none hover:text-primary transition-colors sticky top-0 z-10 bg-surface-container"
       onClick={() => handleSort(columnKey)}
     >
       <span className="inline-flex items-center gap-0.5">
@@ -363,7 +363,7 @@ export default function SubmissionList() {
       <div className="w-full">
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-on-surface mb-1">{t('list.title')}</h2>
+            <h1 className="text-2xl font-bold text-on-surface mb-1">{t('list.title')}</h1>
           </div>
           <div className="flex gap-2">
             <button
@@ -460,14 +460,14 @@ export default function SubmissionList() {
           </div>
         )}
 
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left whitespace-nowrap">
-              <thead className="bg-surface-container border-b border-outline-variant">
-                <tr>
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden flex flex-col">
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+            <table className="w-full text-left whitespace-nowrap border-collapse">
+              <thead>
+                <tr className="border-b border-outline-variant">
                   <SortableTh columnKey="Project_id" label={t('list.headers.projectId')} />
                   <SortableTh columnKey="CustomerName" label={t('list.headers.customer')} />
-                  <th className="px-4 py-2 text-xs font-bold text-on-surface-variant">{t('list.headers.onboardDate')}</th>
+                  <th className="px-4 py-2 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">{t('list.headers.onboardDate')}</th>
                   <SortableTh columnKey="MeetingTopic" label={t('list.headers.topic')} />
                   <SortableTh columnKey="SubmitterName" label={t('list.headers.submitter')} />
                   <SortableTh columnKey="Destinations" label={t('list.headers.location')} />

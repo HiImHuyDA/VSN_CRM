@@ -190,6 +190,7 @@ const PLACEHOLDERS = [
   { label: 'Địa điểm tiếp đón', value: '{{Địa Điểm Tiếp Đón}}' },
   { label: 'Ngày tiếp đón', value: '{{Ngày Tiếp Đón}}' },
   { label: 'Người gửi', value: '{{Người Gửi}}' },
+  { label: 'Lịch Agenda (bảng)', value: '{{Lịch Agenda}}' },
 ];
 
 const convertToChips = (html) => {
@@ -649,8 +650,15 @@ function SubjectEditor({ value, onChange }) {
 
       const ph = PLACEHOLDERS.find(p => p.value === placeholderText);
       if (ph) {
-        const chipHtml = `<span class="ph-chip" contenteditable="false" data-ph="${ph.value}"><span class="ph-chip-del">×</span>${ph.label}</span>&nbsp;`;
+        // Use a wrapper span with no block display to prevent newlines
+        const chipHtml = `<span class="ph-chip" contenteditable="false" data-ph="${ph.value}"><span class="ph-chip-del">×</span>${ph.label}</span>&#8203;`;
         document.execCommand('insertHTML', false, chipHtml);
+        // Remove stray <br> that some browsers insert after insertHTML
+        const editor = editorRef.current;
+        if (editor) {
+          const lastBr = editor.querySelector('br:last-of-type');
+          if (lastBr && !lastBr.previousSibling?.textContent?.trim()) lastBr.remove();
+        }
       }
 
       setShowSuggestions(false);
@@ -910,8 +918,22 @@ function RichTextEditor({ value, onChange }) {
 
       const ph = PLACEHOLDERS.find(p => p.value === placeholderText);
       if (ph) {
-        const chipHtml = `<span class="ph-chip" contenteditable="false" data-ph="${ph.value}"><span class="ph-chip-del">×</span>${ph.label}</span>&nbsp;`;
+        // Use zero-width space instead of &nbsp; to avoid forced newlines
+        const chipHtml = `<span class="ph-chip" contenteditable="false" data-ph="${ph.value}"><span class="ph-chip-del">×</span>${ph.label}</span>&#8203;`;
         document.execCommand('insertHTML', false, chipHtml);
+        // Clean up stray <br> that some browsers inject after insertHTML in contenteditable
+        const editor = editorRef.current;
+        if (editor) {
+          const allBrs = editor.querySelectorAll('br');
+          allBrs.forEach(br => {
+            // Only remove trailing <br> with no adjacent text content
+            const next = br.nextSibling;
+            if (!next || (next.nodeType === Node.TEXT_NODE && !next.textContent.trim())) {
+              const prev = br.previousSibling;
+              if (prev && prev.classList?.contains('ph-chip')) br.remove();
+            }
+          });
+        }
       }
 
       setShowSuggestions(false);
@@ -1662,10 +1684,10 @@ export default function EmailCampaignConfig() {
   };
 
   return (
-    <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
+    <div className="w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
         <div>
-          <h1 className="text-2xl font-bold">Email Campaign Marketing</h1>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Email Campaign Marketing</h1>
         </div>
       </div>
 
@@ -1739,22 +1761,22 @@ export default function EmailCampaignConfig() {
       </div>
 
       {/* TEMPLATES TABLE */}
-      <div className="card">
+      <div className="card overflow-hidden flex flex-col">
         {loading ? (
           <p className="text-center py-8 text-muted">Đang tải...</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="data-table">
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+            <table className="data-table border-collapse">
               <thead>
                 <tr>
-                  <th>Tên Template</th>
-                  <th>Mục đích</th>
-                  <th>Địa điểm</th>
-                  <th>Khách hàng</th>
-                  <th>Trạng thái</th>
-                  <th>Hiệu lực</th>
-                  <th>Kết thúc</th>
-                  <th style={{ width: 160 }}>Thao tác</th>
+                  <th className="sticky top-0 z-10 bg-white">Tên Template</th>
+                  <th className="sticky top-0 z-10 bg-white">Mục đích</th>
+                  <th className="sticky top-0 z-10 bg-white">Địa điểm</th>
+                  <th className="sticky top-0 z-10 bg-white">Khách hàng</th>
+                  <th className="sticky top-0 z-10 bg-white">Trạng thái</th>
+                  <th className="sticky top-0 z-10 bg-white">Hiệu lực</th>
+                  <th className="sticky top-0 z-10 bg-white">Kết thúc</th>
+                  <th className="sticky top-0 z-10 bg-white" style={{ width: 160 }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
@@ -1886,15 +1908,15 @@ export default function EmailCampaignConfig() {
             {loadingLogs ? (
               <p className="text-center py-8 text-muted">Đang tải...</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="data-table">
+              <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+                <table className="data-table border-collapse">
                   <thead>
                     <tr>
-                      <th>Thời gian gửi</th>
-                      <th>Mẫu Email</th>
-                      <th>Khách hàng</th>
-                      <th>Mã đơn</th>
-                      <th>Trạng thái</th>
+                      <th className="sticky top-0 z-10 bg-white">Thời gian gửi</th>
+                      <th className="sticky top-0 z-10 bg-white">Mẫu Email</th>
+                      <th className="sticky top-0 z-10 bg-white">Khách hàng</th>
+                      <th className="sticky top-0 z-10 bg-white">Mã đơn</th>
+                      <th className="sticky top-0 z-10 bg-white">Trạng thái</th>
                     </tr>
                   </thead>
                   <tbody>

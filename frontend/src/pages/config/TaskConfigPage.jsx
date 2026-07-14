@@ -153,10 +153,10 @@ export default function TaskConfigPage() {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   return (
-    <div className="page-container relative">
-      <div className="flex items-center justify-between mb-6">
+    <div className="w-full relative">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
         <div>
-          <h1 className="text-2xl font-bold">Cấu Hình Công Việc</h1>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Cấu Hình Công Việc</h1>
         </div>
       </div>
 
@@ -205,36 +205,38 @@ export default function TaskConfigPage() {
       )}
 
       <div className="flex flex-col md:flex-row gap-6">
-        <div className="card" style={{ flex: 1, overflowX: 'auto' }}>
-          {loading ? <p>Đang tải...</p> : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Địa điểm</th>
-                  <th>Tên công việc</th>
-                  <th>Người đảm nhiệm</th>
-                  <th>Leadtime (ngày)</th>
-                  <th>Bắt buộc</th>
-                  <th>Trạng thái</th>
-                  <th style={{ width: 70 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map(t => (
-                  <tr key={t.Id}>
-                    <td><span className="badge badge-info">{t.Destination}</span></td>
-                    <td className="font-medium">{t.TaskName}</td>
-                    <td className="text-sm text-muted">{t.AssigneeName || '—'}</td>
-                    <td className="text-center">{t.LeadtimeDays} ngày</td>
-                    <td className="text-center">{t.IsCompulsory ? '✅' : '—'}</td>
-                    <td><span className={t.IsActive ? 'badge badge-success' : 'badge badge-danger'}>{t.IsActive ? 'Hoạt động' : 'Dừng'}</span></td>
-                    <td><button className="btn btn-ghost btn-sm" onClick={() => openEdit(t)}>Sửa</button></td>
+        <div className="card overflow-hidden flex flex-col" style={{ flex: 1 }}>
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+            {loading ? <p className="p-4">Đang tải...</p> : (
+              <table className="data-table border-collapse">
+                <thead>
+                  <tr>
+                    <th className="sticky top-0 z-10 bg-white">Địa điểm</th>
+                    <th className="sticky top-0 z-10 bg-white">Tên công việc</th>
+                    <th className="sticky top-0 z-10 bg-white">Người đảm nhiệm</th>
+                    <th className="sticky top-0 z-10 bg-white">Leadtime (ngày)</th>
+                    <th className="sticky top-0 z-10 bg-white">Bắt buộc</th>
+                    <th className="sticky top-0 z-10 bg-white">Trạng thái</th>
+                    <th className="sticky top-0 z-10 bg-white" style={{ width: 70 }}></th>
                   </tr>
-                ))}
-                {!tasks.length && <tr><td colSpan="7" className="text-center text-muted">Chưa có dữ liệu. Hãy thêm cấu hình công việc.</td></tr>}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody>
+                  {tasks.map(t => (
+                    <tr key={t.Id}>
+                      <td><span className="badge badge-info">{t.Destination}</span></td>
+                      <td className="font-medium">{t.TaskName}</td>
+                      <td className="text-sm text-muted">{t.AssigneeName || '—'}</td>
+                      <td className="text-center">{t.LeadtimeDays} ngày</td>
+                      <td className="text-center">{t.IsCompulsory ? '✅' : '—'}</td>
+                      <td><span className={t.IsActive ? 'badge badge-success' : 'badge badge-danger'}>{t.IsActive ? 'Hoạt động' : 'Dừng'}</span></td>
+                      <td><button className="btn btn-ghost btn-sm" onClick={() => openEdit(t)}>Sửa</button></td>
+                    </tr>
+                  ))}
+                  {!tasks.length && <tr><td colSpan="7" className="text-center text-muted">Chưa có dữ liệu. Hãy thêm cấu hình công việc.</td></tr>}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
 
         {editingId !== null && (

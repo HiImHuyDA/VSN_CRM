@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { getMenuPermissionsMatrix, updateMenuPermissions } from '../../services/api';
+import { getMenuIcon } from '../../utils/menuIcons';
 
 const ROLES = ['BOD', 'PRD', 'User'];
 
@@ -223,7 +224,7 @@ export default function MenuPermissionsConfig() {
                                                     <span className="w-6 h-6 mr-1" /> // Spacer giữ thẳng hàng
                                                 )}
 
-                                                <span className="text-lg">{m.Icon}</span>
+                                                <span className="text-lg">{getMenuIcon(m.MenuKey)}</span>
                                                 <span className={isGroup ? 'font-bold uppercase text-xs tracking-wider text-on-surface' : 'text-on-surface font-medium'}>
                                                     {m.MenuName}
                                                 </span>

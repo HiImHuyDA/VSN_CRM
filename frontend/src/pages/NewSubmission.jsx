@@ -473,11 +473,8 @@ export default function NewSubmission({ currentUser }) {
       <div className="shrink-0 mb-6 flex justify-between items-center flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold text-on-surface mb-1">
-            {isEdit ? `Chỉnh sửa đơn ${projectId}` : (mode === 'brand' ? 'Tạo Đơn Tiếp Đón Khách (Brand)' : 'Khai Báo Khách Ra Vào')}
+            {isEdit ? `Chỉnh sửa đơn ${projectId}` : (mode === 'brand' ? 'Tạo Đơn Tiếp Đón Khách' : 'Khai Báo Khách Ra Vào')}
           </h1>
-          <p className="text-xs text-on-surface-variant">
-            {mode === 'brand' ? 'Đón tiếp đối tác, khách hàng thuộc Brand' : 'Đón tiếp Partner, Nhà cung cấp, Khách vãng lai'}
-          </p>
         </div>
         {!isEdit && (
           <button

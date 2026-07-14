@@ -116,7 +116,7 @@ async function processCampaigns() {
         // Lấy danh sách nhiệm vụ của đơn để kiểm tra địa điểm và ngày tiếp đón
         const tasksRes = await pool.request()
           .input('ProjectId', sql.NVarChar(100), project.Project_id)
-          .query('SELECT Destination, OnboardDate FROM CSR_Tasks WHERE Project_id = @ProjectId AND StatusId = 1 ORDER BY OnboardDate ASC');
+          .query('SELECT Destination, OnboardDate, MeetingStartTime, MeetingEndTime, MeetingRoom, MealOption FROM CSR_Tasks WHERE Project_id = @ProjectId AND StatusId = 1 ORDER BY OnboardDate ASC');
         const projectTasks = tasksRes.recordset || [];
         const projectDestinations = projectTasks.map(t => t.Destination).filter(Boolean);
 
@@ -268,9 +268,38 @@ async function processCampaigns() {
           .filter(Boolean)
           .map(d => {
             const dObj = new Date(d);
-            return `${String(dObj.getDate()).padStart(2, '0')}/${String(dObj.getMonth() + 1).padStart(2, '0')}/${dObj.getFullYear()}`;
+            return String(dObj.getDate()).padStart(2, '0') + '/' + String(dObj.getMonth() + 1).padStart(2, '0') + '/' + dObj.getFullYear();
           });
         const concatDates = [...new Set(dateStrings)].join(', ');
+
+        // Bảng Lịch Agenda HTML
+        const agendaRowsP = projectTasks
+          .filter(t => t.OnboardDate)
+          .map(t => {
+            const d = new Date(t.OnboardDate);
+            const dateStr = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+            const pickupTime = t.MeetingStartTime ? String(t.MeetingStartTime).slice(0, 5) : '';
+            const room = t.MeetingRoom || '';
+            const dest = t.Destination || '';
+            const meal = t.MealOption || '';
+            return '<tr>' +
+              '<td style="border:1px solid #e5e7eb;padding:8px 12px;white-space:nowrap">' + dateStr + '</td>' +
+              '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + dest + '</td>' +
+              '<td style="border:1px solid #e5e7eb;padding:8px 12px;white-space:nowrap">' + pickupTime + '</td>' +
+              '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + room + '</td>' +
+              '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + meal + '</td>' +
+              '</tr>';
+          }).join('');
+        const agendaTableP =
+          '<table style="border-collapse:collapse;width:100%;font-size:13px;font-family:Segoe UI,sans-serif">' +
+          '<thead><tr style="background:#f3f4f6">' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Ngày</th>' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Địa điểm</th>' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Giờ đón</th>' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Phòng họp</th>' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Bữa ăn / Tiệc</th>' +
+          '</tr></thead>' +
+          '<tbody>' + agendaRowsP + '</tbody></table>';
 
         let finalSubject = matchedTemplate.EmailSubject || '';
         let finalBody = matchedTemplate.EmailBody || '';
@@ -290,7 +319,8 @@ async function processCampaigns() {
           '{{Người Lập Phiếu}}': project.SubmitterName || '',
           '{{Người Gửi}}': project.SubmitterName || '',
 
-          '{{Địa Điểm Tiếp Đón}}': concatDestinations
+          '{{Địa Điểm Tiếp Đón}}': concatDestinations,
+          '{{Lịch Agenda}}': agendaTableP
         };
 
         // Thực hiện replace
@@ -364,9 +394,11 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
   const projectRes = await pool.request()
     .input('ProjectId', sql.NVarChar(100), projectId)
     .query(`
-      SELECT Project_id, CustomerName, CustomerType, SubmitterName, SubmitterEmail, MeetingTopic, GuestReps, Status
-      FROM CSR_Projects
-      WHERE Project_id = @ProjectId
+      SELECT p.Project_id, p.CustomerName, p.CustomerType, p.SubmitterName, p.SubmitterEmail, p.MeetingTopic, p.GuestReps,
+             s.TenTrangThai AS Status
+      FROM CSR_Projects p
+      INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
+      WHERE p.Project_id = @ProjectId
     `);
 
   const project = projectRes.recordset?.[0];
@@ -374,10 +406,10 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
     throw new Error(`Không tìm thấy đơn tiếp đón với ID: ${projectId}`);
   }
 
-  // Lấy các nhiệm vụ của đơn để có Destination và OnboardDate
+  // Lấy các nhiệm vụ của đơn để có Destination, OnboardDate và các trường Agenda
   const tasksRes = await pool.request()
     .input('ProjectId', sql.NVarChar(100), projectId)
-    .query('SELECT Destination, OnboardDate FROM CSR_Tasks WHERE Project_id = @ProjectId AND StatusId = 1 ORDER BY OnboardDate ASC');
+    .query('SELECT Destination, OnboardDate, MeetingStartTime, MeetingEndTime, MeetingRoom, MealOption FROM CSR_Tasks WHERE Project_id = @ProjectId AND StatusId = 1 ORDER BY OnboardDate ASC');
   const projectTasks = tasksRes.recordset || [];
   const projectDestinations = projectTasks.map(t => t.Destination).filter(Boolean);
 
@@ -537,9 +569,39 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
     .filter(Boolean)
     .map(d => {
       const dObj = new Date(d);
-      return `${String(dObj.getDate()).padStart(2, '0')}/${String(dObj.getMonth() + 1).padStart(2, '0')}/${dObj.getFullYear()}`;
+      return String(dObj.getDate()).padStart(2, '0') + '/' + String(dObj.getMonth() + 1).padStart(2, '0') + '/' + dObj.getFullYear();
     });
   const concatDates = [...new Set(dateStrings)].join(', ');
+
+  // Bảng Lịch Agenda HTML
+  const agendaRows = projectTasks
+    .filter(t => t.OnboardDate)
+    .map(t => {
+      const d = new Date(t.OnboardDate);
+      const dateStr = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+      const pickupTime = t.MeetingStartTime ? String(t.MeetingStartTime).slice(0, 5) : '';
+      const room = t.MeetingRoom || '';
+      const dest = t.Destination || '';
+      const meal = t.MealOption || '';
+      return '<tr>' +
+        '<td style="border:1px solid #e5e7eb;padding:8px 12px;white-space:nowrap">' + dateStr + '</td>' +
+        '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + dest + '</td>' +
+        '<td style="border:1px solid #e5e7eb;padding:8px 12px;white-space:nowrap">' + pickupTime + '</td>' +
+        '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + room + '</td>' +
+        '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + meal + '</td>' +
+        '</tr>';
+    }).join('');
+
+  const agendaTable =
+    '<table style="border-collapse:collapse;width:100%;font-size:13px;font-family:Segoe UI,sans-serif">' +
+    '<thead><tr style="background:#f3f4f6">' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Ngày</th>' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Địa điểm</th>' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Giờ đón</th>' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Phòng họp</th>' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Bữa ăn / Tiệc</th>' +
+    '</tr></thead>' +
+    '<tbody>' + agendaRows + '</tbody></table>';
 
   let finalSubject = matchedTemplate.EmailSubject || '';
   let finalBody = matchedTemplate.EmailBody || '';
@@ -555,7 +617,8 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
     '{{SubmitterName}}': project.SubmitterName || '',
     '{{Người Lập Phiếu}}': project.SubmitterName || '',
     '{{Người Gửi}}': project.SubmitterName || '',
-    '{{Địa Điểm Tiếp Đón}}': concatDestinations
+    '{{Địa Điểm Tiếp Đón}}': concatDestinations,
+    '{{Lịch Agenda}}': agendaTable
   };
 
   Object.entries(placeholders).forEach(([tag, val]) => {

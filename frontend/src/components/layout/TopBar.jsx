@@ -156,14 +156,14 @@ export default function TopBar({ user, isSidebarCollapsed, setIsSidebarCollapsed
       </div>
 
       <div className="flex items-center gap-4">
-        <Link
+        {/* <Link
           to="/new"
           className="bg-primary text-on-primary p-2 sm:px-4 sm:py-2 rounded-full sm:rounded-lg font-label-md flex items-center gap-2 hover:bg-primary-container transition-colors no-underline"
           title={t('app.createBtn')}
         >
           <span className="material-symbols-outlined">add</span>
           <span className="hidden sm:inline">{t('app.createBtn')}</span>
-        </Link>
+        </Link> */}
 
         {/* Notifications */}
         <div className="relative" ref={notifRef}>

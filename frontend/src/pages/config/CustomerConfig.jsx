@@ -129,10 +129,10 @@ export default function CustomerConfig() {
   };
 
   return (
-    <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
+    <div className="w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
         <div>
-          <h1 className="text-2xl font-bold">Danh Mục Khách Hàng</h1>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Danh Mục Khách Hàng</h1>
         </div>
       </div>
 
@@ -158,17 +158,18 @@ export default function CustomerConfig() {
 
       <div className="flex flex-col md:flex-row gap-6">
         {/* Cột trái: Danh sách */}
-        <div className="card" style={{ flex: 1 }}>
+        <div className="card overflow-hidden flex flex-col" style={{ flex: 1 }}>
           <h3 className="font-bold mb-4">Danh sách {selectedType}</h3>
-          {loading ? <p>Đang tải...</p> : (
-            <table className="data-table">
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+            {loading ? <p className="p-4">Đang tải...</p> : (
+              <table className="data-table border-collapse">
               <thead>
                 <tr>
-                  <th>Tên khách hàng</th>
-                  <th>Người đại diện</th>
-                  <th>Số người đại diện</th>
-                  <th>Trạng thái</th>
-                  <th style={{ width: '80px' }}></th>
+                  <th className="sticky top-0 z-10 bg-white">Tên khách hàng</th>
+                  <th className="sticky top-0 z-10 bg-white">Người đại diện</th>
+                  <th className="sticky top-0 z-10 bg-white">Số người đại diện</th>
+                  <th className="sticky top-0 z-10 bg-white">Trạng thái</th>
+                  <th className="sticky top-0 z-10 bg-white" style={{ width: '80px' }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -206,11 +207,12 @@ export default function CustomerConfig() {
                   )
                 })}
                 {customers.length === 0 && (
-                  <tr><td colSpan="4" className="text-center text-muted">Chưa có dữ liệu</td></tr>
+                  <tr><td colSpan="5" className="text-center text-muted">Chưa có dữ liệu</td></tr>
                 )}
               </tbody>
             </table>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Cột phải: Form chỉnh sửa */}

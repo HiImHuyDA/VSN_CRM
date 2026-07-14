@@ -193,10 +193,10 @@ export default function UserConfig() {
   }, [users, selectedMnvs, selectedDepts, selectedRoles, selectedStatuses]);
 
   return (
-    <div className="page-container">
-      <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
         <div>
-          <h1 className="text-2xl font-bold">Danh sách Tài khoản</h1>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Danh sách Tài khoản</h1>
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-start md:justify-end">
           {syncStatus && (
@@ -340,22 +340,21 @@ export default function UserConfig() {
         </div>
       </div>
 
-      {/* TABLE */}
-      <div className="card">
-        <div className="overflow-x-auto">
+      <div className="card overflow-hidden flex flex-col">
+        <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
           {loading ? (
             <div className="p-8 text-center text-muted">Đang tải dữ liệu...</div>
           ) : (
-            <table className="data-table">
+            <table className="data-table border-collapse">
               <thead>
                 <tr>
-                  <th>User Name</th>
-                  <th>Phân quyền</th>
-                  <th>Họ tên</th>
-                  <th>Email</th>
-                  <th>Phòng ban</th>
-                  <th>Trạng thái</th>
-                  <th style={{ width: '120px' }}>Thao tác</th>
+                  <th className="sticky top-0 z-10 bg-white">User Name</th>
+                  <th className="sticky top-0 z-10 bg-white">Phân quyền</th>
+                  <th className="sticky top-0 z-10 bg-white">Họ tên</th>
+                  <th className="sticky top-0 z-10 bg-white">Email</th>
+                  <th className="sticky top-0 z-10 bg-white">Phòng ban</th>
+                  <th className="sticky top-0 z-10 bg-white">Trạng thái</th>
+                  <th className="sticky top-0 z-10 bg-white" style={{ width: '120px' }}>Thao tác</th>
                 </tr>
               </thead>
               <tbody>

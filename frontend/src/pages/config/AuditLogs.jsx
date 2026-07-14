@@ -70,8 +70,12 @@ export default function AuditLogs() {
   }, [logs, filterMnv, filterDept, filterRole, filterAction, filterDate]);
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Lịch sử hệ thống</h1>
+    <div className="w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Lịch sử hệ thống</h1>
+        </div>
+      </div>
 
       <div className="bg-surface rounded-xl p-4 shadow-sm border border-outline-variant mb-6">
         <h2 className="text-sm font-semibold mb-3">Bộ lọc</h2>
@@ -100,17 +104,17 @@ export default function AuditLogs() {
       </div>
 
       <div className="bg-surface rounded-xl shadow-sm border border-outline-variant overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-surface-container-low border-b border-outline-variant text-sm text-on-surface-variant">
-                <th className="px-4 py-3 font-semibold">Thời gian</th>
-                <th className="px-4 py-3 font-semibold">MNV</th>
-                <th className="px-4 py-3 font-semibold">Phòng ban</th>
-                <th className="px-4 py-3 font-semibold">Phân quyền</th>
-                <th className="px-4 py-3 font-semibold">Hành động</th>
-                <th className="px-4 py-3 font-semibold">Mã Đơn</th>
-                <th className="px-4 py-3 font-semibold w-1/3">Chi tiết</th>
+                <th className="px-4 py-3 font-semibold sticky top-0 z-10 bg-surface-container-low">Thời gian</th>
+                <th className="px-4 py-3 font-semibold sticky top-0 z-10 bg-surface-container-low">MNV</th>
+                <th className="px-4 py-3 font-semibold sticky top-0 z-10 bg-surface-container-low">Phòng ban</th>
+                <th className="px-4 py-3 font-semibold sticky top-0 z-10 bg-surface-container-low">Phân quyền</th>
+                <th className="px-4 py-3 font-semibold sticky top-0 z-10 bg-surface-container-low">Hành động</th>
+                <th className="px-4 py-3 font-semibold sticky top-0 z-10 bg-surface-container-low">Mã Đơn</th>
+                <th className="px-4 py-3 font-semibold w-1/3 sticky top-0 z-10 bg-surface-container-low">Chi tiết</th>
               </tr>
             </thead>
             <tbody>

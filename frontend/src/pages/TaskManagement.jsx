@@ -281,11 +281,11 @@ export default function TaskManagement() {
   ];
 
   return (
-    <div className="w-full space-y-6 pb-12">
+    <div className="w-full">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-on-surface mb-1">Quản lý Công việc</h2>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Quản lý Công việc</h1>
         </div>
         
         {/* Toggle View Mode */}
@@ -407,13 +407,14 @@ export default function TaskManagement() {
         </div>
       )}
 
-      {/* Main Views Container */}
-      {loading ? (
-        <div className="p-12 text-center text-gray-500">
-          <span className="material-symbols-outlined text-4xl animate-spin text-primary">refresh</span>
-          <p className="text-sm font-semibold mt-1">Đang đồng bộ công việc...</p>
-        </div>
-      ) : tasks.length === 0 ? (
+      {/* Scrollable Content Container */}
+      <div className="overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)] pr-1 mb-6">
+        {loading ? (
+          <div className="p-12 text-center text-gray-500">
+            <span className="material-symbols-outlined text-4xl animate-spin text-primary">refresh</span>
+            <p className="text-sm font-semibold mt-1">Đang đồng bộ công việc...</p>
+          </div>
+        ) : tasks.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-12 text-center text-gray-400">
           Không tìm thấy công việc chuẩn bị nào phù hợp.
         </div>
@@ -594,6 +595,7 @@ export default function TaskManagement() {
           ))}
         </div>
       )}
+      </div>
 
       {/* DETAIL MODAL DRAWER (Ghi chú & Đính kèm) */}
       {selectedTask && (

@@ -70,15 +70,15 @@ export default function MeetingRoomConfig() {
   };
 
   return (
-    <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
+    <div className="w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
         <div>
-          <h1 className="text-2xl font-bold">Danh Mục Phòng Họp</h1>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Danh Mục Phòng Họp</h1>
         </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-6">
-        <div className="card" style={{ flex: 1 }}>
+        <div className="card overflow-hidden flex flex-col" style={{ flex: 1 }}>
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold">Danh sách phòng họp</h3>
             <div className="flex gap-2">
@@ -89,9 +89,17 @@ export default function MeetingRoomConfig() {
               <button className="btn btn-primary" onClick={handleAddNew}>+ Thêm phòng họp</button>
             </div>
           </div>
-          {loading ? <p>Đang tải...</p> : (
-            <table className="data-table">
-              <thead><tr><th>Tên phòng họp</th><th>Email lịch Outlook</th><th>Trạng thái</th><th style={{ width: 80 }}></th></tr></thead>
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+            {loading ? <p className="p-4">Đang tải...</p> : (
+              <table className="data-table border-collapse">
+                <thead>
+                  <tr>
+                    <th className="sticky top-0 z-10 bg-white">Tên phòng họp</th>
+                    <th className="sticky top-0 z-10 bg-white">Email lịch Outlook</th>
+                    <th className="sticky top-0 z-10 bg-white">Trạng thái</th>
+                    <th className="sticky top-0 z-10 bg-white" style={{ width: 80 }}></th>
+                  </tr>
+                </thead>
               <tbody>
                 {rooms.map(r => (
                   <tr key={r.Id}>
@@ -108,7 +116,8 @@ export default function MeetingRoomConfig() {
                 {!rooms.length && <tr><td colSpan="4" className="text-center text-muted">Chưa có dữ liệu</td></tr>}
               </tbody>
             </table>
-          )}
+            )}
+          </div>
 
           {/* Thông tin hướng dẫn */}
           <div style={{ marginTop: 16, padding: 12, background: 'var(--color-bg)', borderRadius: 8, fontSize: 13, color: 'var(--color-text-muted)' }}>

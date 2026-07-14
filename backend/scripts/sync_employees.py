@@ -131,7 +131,7 @@ def read_excel(source_path: Path) -> list[dict] | None:
 
         # Đọc dữ liệu
         employees = []
-        seen_emails = set()
+        seen_mnvs = set()
 
         for row in ws.iter_rows(min_row=HEADER_ROW + 1, values_only=True):
             email = str(row[col["Mail"]] or "").strip().lower()
@@ -141,7 +141,7 @@ def read_excel(source_path: Path) -> list[dict] | None:
                 continue
             if not mnv:
                 continue
-            if email in seen_emails:
+            if mnv in seen_mnvs:
                 continue
 
             ho  = str(row[col["Họ"]]  or "").strip()
@@ -153,7 +153,7 @@ def read_excel(source_path: Path) -> list[dict] | None:
 
             department = str(row[col["Re-Team"]] or "").strip() if "Re-Team" in col else ""
 
-            seen_emails.add(email)
+            seen_mnvs.add(mnv)
             employees.append({
                 "fullName": full_name,
                 "email":    email,

@@ -367,10 +367,11 @@ async function sendApprovalEmail(project, tasks, pool) {
     }
 
     // 5. Gửi thư qua Graph API
+    const approvalSubject = `CRM-Request: Thông báo khách đến thăm VSN [${project.ParentId}]`;
     const url = `https://graph.microsoft.com/v1.0/users/${senderEmail}/sendMail`;
     const mailPayload = {
       message: {
-        subject: `CRM-Request: Thông báo khách đến thăm VSN [${project.ParentId}]`,
+        subject: approvalSubject,
         body: {
           contentType: 'HTML',
           content: htmlBody
@@ -389,6 +390,30 @@ async function sendApprovalEmail(project, tasks, pool) {
     });
 
     console.log(`[Email Notification] ✅ Approved email sent successfully for ${project.Project_id}`);
+
+    // 6. Tìm lại internetMessageId của email vừa gửi để lưu vào DB cho email threading
+    try {
+      // Đợi 1.5 giây để Graph API kịp cập nhật Sent Items
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      const encodedSubject = encodeURIComponent(`'${approvalSubject.replace(/'/g, "''")}'`);
+      const searchUrl = `https://graph.microsoft.com/v1.0/users/${senderEmail}/messages?$filter=subject eq ${encodedSubject}&$orderby=sentDateTime desc&$top=1&$select=internetMessageId`;
+      const searchRes = await axios.get(searchUrl, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      const sentMessage = searchRes.data?.value?.[0];
+      if (sentMessage?.internetMessageId) {
+        const parentId = project.ParentId || project.Project_id;
+        await pool.request()
+          .input('ParentId', sql.NVarChar(100), parentId)
+          .input('InternetMessageId', sql.NVarChar(500), sentMessage.internetMessageId)
+          .execute('usp_SaveApprovalEmailMessageId');
+        console.log(`[Email Notification] 🔗 Saved internetMessageId for threading: ${sentMessage.internetMessageId.substring(0, 60)}...`);
+      } else {
+        console.warn(`[Email Notification] ⚠️ Could not find sent message to extract internetMessageId.`);
+      }
+    } catch (threadErr) {
+      console.warn(`[Email Notification] ⚠️ Failed to save internetMessageId (threading may not work):`, threadErr.message);
+    }
   } catch (error) {
     console.error(`[Email Notification] ❌ Failed to send approved email for ${project.Project_id}:`, error.response?.data || error.message);
   }
@@ -709,17 +734,41 @@ async function handleProjectCancelNotification(projectId, reason, pool) {
           </html>
         `;
 
+        // Đọc internetMessageId của email gốc để threading
+        let cancelReplyHeaders = [];
+        try {
+          const msgIdRes = await pool.request()
+            .input('ParentId', sql.NVarChar(100), parentId)
+            .execute('usp_GetApprovalEmailMessageId');
+          const origMsgId = msgIdRes.recordset?.[0]?.ApprovalEmailMessageId;
+          if (origMsgId) {
+            cancelReplyHeaders = [
+              { name: 'In-Reply-To', value: origMsgId },
+              { name: 'References', value: origMsgId }
+            ];
+            console.log(`[Cancel Notification] 🔗 Using internetMessageId for threading.`);
+          } else {
+            console.warn(`[Cancel Notification] ⚠️ No internetMessageId found. Cancel email will not be threaded.`);
+          }
+        } catch (threadErr) {
+          console.warn(`[Cancel Notification] ⚠️ Failed to fetch internetMessageId:`, threadErr.message);
+        }
+
         const url = `https://graph.microsoft.com/v1.0/users/${senderEmail}/sendMail`;
-        const mailPayload = {
-          message: {
-            subject: `RE: CRM-Request: Thông báo khách đến thăm VSN [${parentId}]`,
-            body: {
-              contentType: 'HTML',
-              content: htmlBody
-            },
-            toRecipients,
-            ccRecipients
+        const cancelMessagePayload = {
+          subject: `RE: CRM-Request: Thông báo khách đến thăm VSN [${parentId}]`,
+          body: {
+            contentType: 'HTML',
+            content: htmlBody
           },
+          toRecipients,
+          ccRecipients
+        };
+        if (cancelReplyHeaders.length > 0) {
+          cancelMessagePayload.internetMessageHeaders = cancelReplyHeaders;
+        }
+        const mailPayload = {
+          message: cancelMessagePayload,
           saveToSentItems: 'true'
         };
 
@@ -1009,17 +1058,42 @@ async function sendApprovalEmailWithPrefix(project, tasks, customSubject, prefix
       </html>
     `;
 
+    // Đọc internetMessageId của email gốc để threading
+    let replyHeaders = [];
+    try {
+      const parentId = project.ParentId || project.Project_id;
+      const msgIdRes = await pool.request()
+        .input('ParentId', sql.NVarChar(100), parentId)
+        .execute('usp_GetApprovalEmailMessageId');
+      const origMsgId = msgIdRes.recordset?.[0]?.ApprovalEmailMessageId;
+      if (origMsgId) {
+        replyHeaders = [
+          { name: 'In-Reply-To', value: origMsgId },
+          { name: 'References', value: origMsgId }
+        ];
+        console.log(`[Email Notification] 🔗 Using internetMessageId for threading: ${origMsgId.substring(0, 60)}...`);
+      } else {
+        console.warn(`[Email Notification] ⚠️ No internetMessageId found for parent ${parentId}. Email will not be threaded.`);
+      }
+    } catch (threadErr) {
+      console.warn(`[Email Notification] ⚠️ Failed to fetch internetMessageId:`, threadErr.message);
+    }
+
     const url = `https://graph.microsoft.com/v1.0/users/${senderEmail}/sendMail`;
-    const mailPayload = {
-      message: {
-        subject: customSubject,
-        body: {
-          contentType: 'HTML',
-          content: htmlBody
-        },
-        toRecipients,
-        ccRecipients
+    const messagePayload = {
+      subject: customSubject,
+      body: {
+        contentType: 'HTML',
+        content: htmlBody
       },
+      toRecipients,
+      ccRecipients
+    };
+    if (replyHeaders.length > 0) {
+      messagePayload.internetMessageHeaders = replyHeaders;
+    }
+    const mailPayload = {
+      message: messagePayload,
       saveToSentItems: 'true'
     };
 

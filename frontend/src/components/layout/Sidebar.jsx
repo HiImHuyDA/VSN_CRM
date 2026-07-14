@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
+import { getMenuIcon } from '../../utils/menuIcons';
 
 export default function Sidebar({ menuTree, isCollapsed, setIsCollapsed, isMobile }) {
   const [expandedGroups, setExpandedGroups] = useState({});
@@ -43,11 +44,12 @@ export default function Sidebar({ menuTree, isCollapsed, setIsCollapsed, isMobil
         return (
           <div key={item.Id} className={depth === 0 ? 'mt-2' : 'mb-1'}>
             <div
-              className={`flex items-center justify-between px-3 py-2 cursor-pointer text-on-surface-variant hover:text-primary transition-colors ${depth === 0 ? '' : 'pl-6'}`}
+              className={`flex items-center justify-between px-3 py-2 cursor-pointer text-on-surface-variant hover:text-primary transition-colors`}
+              style={{ paddingLeft: `${12 + depth * 16}px` }}
               onClick={() => toggleGroup(item.MenuKey)}
             >
               <div className="flex items-center gap-2">
-                <span className="text-lg">{item.Icon}</span>
+                <span className="text-lg">{getMenuIcon(item.MenuKey)}</span>
                 {!isCollapsed && (
                   <span className={depth === 0 ? 'font-bold text-sm uppercase tracking-wider' : 'font-semibold text-sm uppercase tracking-wider'}>
                     {item.MenuName}
@@ -71,13 +73,13 @@ export default function Sidebar({ menuTree, isCollapsed, setIsCollapsed, isMobil
         <NavLink
           key={item.Id}
           to={item.Path}
-          end={item.Path === '/'}
+          end={true}
           className={({ isActive }) => isActive ? activeClass : inactiveClass}
-          style={depth > 1 ? { paddingLeft: `${16 + depth * 8}px` } : undefined}
+          style={{ paddingLeft: `${16 + depth * 16}px` }}
           title={item.MenuName}
           onClick={handleLinkClick}
         >
-          <span className="text-lg">{item.Icon}</span>
+          <span className="text-lg">{getMenuIcon(item.MenuKey)}</span>
           {!isCollapsed && <span>{item.MenuName}</span>}
         </NavLink>
       );

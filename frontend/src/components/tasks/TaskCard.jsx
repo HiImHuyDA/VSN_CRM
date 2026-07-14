@@ -297,9 +297,13 @@ export default function TaskCard({
           </div>
           <div className="form-group">
             <label>Số người đi</label>
-            <input type="text" value={task.passengerCount || ''}
-              onChange={e => set('passengerCount', e.target.value)}
-              placeholder="VD: 4" />
+            <input
+              type="number"
+              min={1}
+              value={task.passengerCount || 1}
+              onChange={e => set('passengerCount', parseInt(e.target.value) || 1)}
+              placeholder="VD: 4"
+            />
           </div>
           <div className="form-group">
             <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -321,9 +325,13 @@ export default function TaskCard({
           </div>
           <div className="form-group">
             <label>Số vé / người</label>
-            <input type="text" value={task.passengerCount || ''}
-              onChange={e => set('passengerCount', e.target.value)}
-              placeholder="VD: 2 vé" />
+            <input
+              type="number"
+              min={1}
+              value={task.passengerCount || 1}
+              onChange={e => set('passengerCount', parseInt(e.target.value) || 1)}
+              placeholder="VD: 2"
+            />
           </div>
           <div className="form-group">
             <label>Ngày về</label>
@@ -379,8 +387,8 @@ export default function TaskCard({
                       type="button"
                       onClick={() => set('mealOption', r.name)}
                       className={`px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer font-medium ${task.mealOption === r.name
-                          ? 'bg-primary/10 border-primary text-primary font-bold'
-                          : 'bg-white hover:bg-surface-container-low border-outline-variant text-on-surface'
+                        ? 'bg-primary/10 border-primary text-primary font-bold'
+                        : 'bg-white hover:bg-surface-container-low border-outline-variant text-on-surface'
                         }`}
                     >
                       {r.name.split('-')[1] || r.name} {/* Chỉ hiển thị tên ngắn gọn */}

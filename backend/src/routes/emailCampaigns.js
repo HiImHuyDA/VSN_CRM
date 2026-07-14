@@ -27,6 +27,59 @@ router.get('/', async (req, res, next) => {
   }
 });
 
+// GET /api/email-campaigns/brand-projects — Lấy danh sách đơn Brand đã duyệt để test campaign (past & future)
+router.get('/brand-projects', async (req, res, next) => {
+  try {
+    const pool = await getCsrPool();
+    const result = await pool.request().query(`
+      WITH LatestVersions AS (
+          SELECT 
+              Project_id,
+              ROW_NUMBER() OVER (PARTITION BY ParentId ORDER BY Version DESC) as rn
+          FROM CSR_Projects
+      )
+      SELECT 
+        p.Project_id,
+        p.CustomerName,
+        p.MeetingTopic,
+        p.SubmitterName,
+        t.FirstOnboardDate
+      FROM CSR_Projects p
+      INNER JOIN LatestVersions lv ON p.Project_id = lv.Project_id AND lv.rn = 1
+      INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
+      LEFT JOIN (
+          SELECT Project_id, MIN(OnboardDate) AS FirstOnboardDate
+          FROM CSR_Tasks
+          GROUP BY Project_id
+      ) t ON p.Project_id = t.Project_id
+      WHERE p.CustomerType = 'Brand'
+        AND s.TenTrangThai IN (N'BOD đã duyệt', N'Hoàn thành')
+      ORDER BY COALESCE(t.FirstOnboardDate, '2099-12-31') ASC, p.Project_id DESC
+    `);
+    res.json({ success: true, data: result.recordset || [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/email-campaigns/logs — Lấy lịch sử gửi email campaign
+router.get('/logs', async (req, res, next) => {
+  try {
+    const pool = await getCsrPool();
+    const result = await pool.request().query(`
+      SELECT l.Id, l.TemplateId, l.ProjectId, l.SentAt, l.Status, l.ErrorMessage,
+             t.TemplateName, p.CustomerName, p.MeetingTopic
+      FROM CSR_EmailCampaignLogs l
+      LEFT JOIN CSR_EmailCampaignTemplates t ON l.TemplateId = t.Id
+      LEFT JOIN CSR_Projects p ON l.ProjectId = p.Project_id
+      ORDER BY l.SentAt DESC
+    `);
+    res.json({ success: true, data: result.recordset || [] });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/email-campaigns/:id
 router.get('/:id', async (req, res, next) => {
   try {
@@ -130,59 +183,6 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
-// GET /api/email-campaigns/brand-projects — Lấy danh sách đơn Brand đã duyệt có ngày tiếp đón tương lai để test campaign
-router.get('/brand-projects', async (req, res, next) => {
-  try {
-    const pool = await getCsrPool();
-    const result = await pool.request().query(`
-      WITH LatestVersions AS (
-          SELECT 
-              Project_id,
-              ROW_NUMBER() OVER (PARTITION BY ParentId ORDER BY Version DESC) as rn
-          FROM CSR_Projects
-      )
-      SELECT 
-        p.Project_id,
-        p.CustomerName,
-        p.MeetingTopic,
-        p.SubmitterName,
-        t.FirstOnboardDate
-      FROM CSR_Projects p
-      INNER JOIN LatestVersions lv ON p.Project_id = lv.Project_id AND lv.rn = 1
-      INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
-      INNER JOIN (
-          SELECT Project_id, MIN(OnboardDate) AS FirstOnboardDate
-          FROM CSR_Tasks
-          WHERE OnboardDate >= CAST(GETDATE() AS DATE)
-          GROUP BY Project_id
-      ) t ON p.Project_id = t.Project_id
-      WHERE p.CustomerType = 'Brand'
-        AND s.TenTrangThai IN (N'BOD đã duyệt', N'Hoàn thành')
-      ORDER BY t.FirstOnboardDate ASC
-    `);
-    res.json({ success: true, data: result.recordset || [] });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// GET /api/email-campaigns/logs — Lấy lịch sử gửi email campaign
-router.get('/logs', async (req, res, next) => {
-  try {
-    const pool = await getCsrPool();
-    const result = await pool.request().query(`
-      SELECT l.Id, l.TemplateId, l.ProjectId, l.SentAt, l.Status, l.ErrorMessage,
-             t.TemplateName, p.CustomerName, p.MeetingTopic
-      FROM CSR_EmailCampaignLogs l
-      LEFT JOIN CSR_EmailCampaignTemplates t ON l.TemplateId = t.Id
-      LEFT JOIN CSR_Projects p ON l.ProjectId = p.Project_id
-      ORDER BY l.SentAt DESC
-    `);
-    res.json({ success: true, data: result.recordset || [] });
-  } catch (err) {
-    next(err);
-  }
-});
 
 // POST /api/email-campaigns/trigger-test — Gửi thử email campaign ngay lập tức
 router.post('/trigger-test', async (req, res, next) => {

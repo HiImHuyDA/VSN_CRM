@@ -131,10 +131,10 @@ export default function RestaurantConfig() {
 
 
   return (
-    <div className="page-container">
-      <div className="flex items-center justify-between mb-6">
+    <div className="w-full">
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-end mb-4">
         <div>
-          <h1 className="text-2xl font-bold">Danh Mục Ăn Uống</h1>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">Danh Mục Ăn Uống</h1>
         </div>
       </div>
 
@@ -152,7 +152,7 @@ export default function RestaurantConfig() {
       </div>
 
       <div className="flex flex-col md:flex-row gap-6">
-        <div className="card" style={{ flex: 1 }}>
+        <div className="card overflow-hidden flex flex-col" style={{ flex: 1 }}>
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold">{CATEGORIES.find(c => c.value === activeTab)?.label}</h3>
             <div className="flex gap-2">
@@ -163,21 +163,22 @@ export default function RestaurantConfig() {
               <button className="btn btn-primary" onClick={handleAddNew}>+ Thêm mới</button>
             </div>
           </div>
-          {loading ? <p>Đang tải...</p> : (
-            <table className="data-table">
+          <div className="overflow-x-auto overflow-y-auto custom-scrollbar max-h-[calc(100vh-340px)]">
+            {loading ? <p className="p-4">Đang tải...</p> : (
+              <table className="data-table border-collapse">
               <thead>
                 <tr>
-                  <th>Tên</th>
+                  <th className="sticky top-0 z-10 bg-white">Tên</th>
                   {activeTab === 'DinnerRestaurant' && (
                     <>
-                      <th>Phân loại Level</th>
-                      <th>Ẩm thực</th>
-                      <th>Giá 4 người (ước tính)</th>
-                      <th>Đánh giá TB</th>
-                    </>
+                      <th className="sticky top-0 z-10 bg-white">Phân loại Level</th>
+                      <th className="sticky top-0 z-10 bg-white">Ẩm thực</th>
+                      <th className="sticky top-0 z-10 bg-white">Giá 4 người (ước tính)</th>
+                      <th className="sticky top-0 z-10 bg-white">Đánh giá TB</th>
+                    </                    >
                   )}
-                  <th>Trạng thái</th>
-                  <th style={{ width: 80 }}></th>
+                  <th className="sticky top-0 z-10 bg-white">Trạng thái</th>
+                  <th className="sticky top-0 z-10 bg-white" style={{ width: 80 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -219,7 +220,8 @@ export default function RestaurantConfig() {
                 {!items.length && <tr><td colSpan={activeTab === 'DinnerRestaurant' ? 7 : 3} className="text-center text-muted">Chưa có dữ liệu. Dữ liệu sẽ được import từ cấu hình tĩnh.</td></tr>}
               </tbody>
             </table>
-          )}
+            )}
+          </div>
         </div>
 
         {editingId !== null && (
