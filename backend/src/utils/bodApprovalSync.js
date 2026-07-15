@@ -315,8 +315,302 @@ function startBODApprovalSyncScheduler() {
   }, 30000);
 }
 
+/**
+ * Đẩy yêu cầu duyệt của PRD vào SharePoint List hàng đợi CSR_PRD_Approval_Queue
+ * để kích hoạt Power Automate → Teams Approvals.
+ */
+async function sendPRDApprovalToSharePointQueue(submission, pool) {
+  try {
+    const projectId = submission.Project_id || submission.projectId || 'Unknown';
+
+    // 1. Truy vấn thông tin chi tiết đơn từ SQL Server để đảm bảo có đầy đủ dữ liệu
+    const projectRes = await pool.request()
+      .input('ProjectId', sql.NVarChar(100), projectId)
+      .query(`
+        SELECT Project_id, SubmitterMNV, SubmitterName, GuestReps, AgendaJsonData, CustomerType, SubmitDate, CustomerName, MeetingTopic 
+        FROM CSR_Projects 
+        WHERE Project_id = @ProjectId
+      `);
+
+    const project = projectRes.recordset?.[0];
+    if (!project) {
+      throw new Error(`Không tìm thấy đơn tiếp đón với ID: ${projectId} trong database`);
+    }
+
+    const customer = project.CustomerName || 'Unknown';
+    const topic = project.MeetingTopic || 'Không có chủ đề';
+
+    // 2. Tự động xác định email của PRD trong hệ thống
+    let prdEmail = '';
+    const prdRes = await pool.request()
+      .query("SELECT Email FROM CSR_Users WHERE Role = 'PRD' AND Email IS NOT NULL");
+    const emails = prdRes.recordset.map(r => r.Email.trim()).filter(Boolean);
+    if (emails.length > 0) {
+      prdEmail = emails.join(';');
+    } else {
+      prdEmail = 'minht@vietsuncorp.com.vn'; // Fallback
+    }
+
+    // 3. Xác định Team
+    let teamName = 'PRD';
+    if (project.SubmitterMNV) {
+      const userRes = await pool.request()
+        .input('MNV', sql.NVarChar(50), project.SubmitterMNV)
+        .query('SELECT Role, Department FROM CSR_Users WHERE MNV = @MNV');
+      if (userRes.recordset.length > 0) {
+        const u = userRes.recordset[0];
+        teamName = u.Department || u.Role || 'PRD';
+      }
+    }
+
+    // 4. Parse lịch trình chung (AgendaJsonData) để lấy ngày, địa điểm & lịch trình dạng text
+    let agendaJson = [];
+    if (project.AgendaJsonData) {
+      try {
+        agendaJson = JSON.parse(project.AgendaJsonData);
+      } catch (e) {
+        console.error('[PRD Approval Queue] Failed to parse AgendaJsonData:', e.message);
+      }
+    }
+
+    let meetingDateStr = '—';
+    if (agendaJson && agendaJson.length > 0) {
+      const dates = agendaJson
+        .map(day => day.date ? new Date(day.date) : null)
+        .filter(d => d && !isNaN(d.getTime()));
+      if (dates.length > 0) {
+        const minDate = new Date(Math.min(...dates));
+        const dayStr = String(minDate.getDate()).padStart(2, '0');
+        const monthStr = String(minDate.getMonth() + 1).padStart(2, '0');
+        meetingDateStr = `${dayStr}/${monthStr}/${minDate.getFullYear()}`;
+      }
+    } else if (project.SubmitDate) {
+      const d = new Date(project.SubmitDate);
+      meetingDateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    }
+
+    let destinationStr = '—';
+    if (agendaJson && agendaJson.length > 0) {
+      const dests = agendaJson.flatMap(day => Object.keys(day.agenda || {}));
+      const uniqueDests = [...new Set(dests)].filter(Boolean);
+      if (uniqueDests.length > 0) destinationStr = uniqueDests.join(', ');
+    }
+
+    let agendaText = '—';
+    if (agendaJson && agendaJson.length > 0) {
+      const lines = [];
+      agendaJson.forEach(day => {
+        if (day.agenda) {
+          Object.entries(day.agenda).forEach(([dest, items]) => {
+            if (Array.isArray(items)) {
+              items.forEach(item => {
+                const time = item.timeStart || item.time || '—';
+                const type = item.contentType || item.type || '—';
+                const content = item.detail || item.content || '—';
+                lines.push(`${type} - ${time} - ${content}`);
+              });
+            }
+          });
+        }
+      });
+      if (lines.length > 0) {
+        agendaText = lines.join(' | ');
+      }
+    }
+
+    let guestRepsStr = '—';
+    if (project.GuestReps) {
+      try {
+        const reps = JSON.parse(project.GuestReps);
+        if (Array.isArray(reps) && reps.length > 0) {
+          guestRepsStr = reps.map(r => {
+            const salutation = r.salutation || '';
+            const name = r.name || '';
+            const title = r.title || '';
+            return `${salutation ? salutation + ' ' : ''}${name}${title ? ' - ' + title : ''}`;
+          }).join(' | ');
+        }
+      } catch (e) {
+        console.error('[PRD Approval Queue] Failed to parse GuestReps:', e.message);
+      }
+    }
+
+    // 5. Kết nối SharePoint và ghi vào list CSR_PRD_Approval_Queue
+    const accessToken = await getAccessToken();
+    const siteId = await getSharePointSiteId(accessToken);
+    const queueListName = process.env.SHAREPOINT_PRD_APPROVAL_QUEUE_LIST_ID || 'CSR_PRD_Approval_Queue';
+
+    const itemPayload = {
+      fields: {
+        Title: `PRD Approval Request - ${customer}`,
+        ProjectId: projectId,
+        BOD_Email: prdEmail.trim(),
+        Team: teamName,
+        MeetingTopic: topic,
+        Destination: destinationStr,
+        CustomerName: customer,
+        GuestReps: guestRepsStr,
+        MeetingDate: meetingDateStr,
+        AgendaText: agendaText
+      }
+    };
+
+    const addUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${queueListName}/items`;
+    await axios.post(addUrl, itemPayload, {
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      timeout: 8000
+    });
+
+    console.log(`[PRD Approval Queue] ✅ Successfully added project ${projectId} to SharePoint Approval Queue for PRD: ${prdEmail}`);
+  } catch (error) {
+    console.error(`[PRD Approval Queue] ❌ Failed to add project ${submission.Project_id || 'Unknown'} to SharePoint Queue:`, error.message);
+    throw error;
+  }
+}
+
+let isPrdSyncing = false;
+/**
+ * Đồng bộ kết quả phê duyệt của PRD từ SharePoint List kết quả CSR_PRD_Approval_Results về SQL Server local
+ */
+async function syncPRDApprovalResults() {
+  if (isPrdSyncing) {
+    return;
+  }
+  isPrdSyncing = true;
+  try {
+    const accessToken = await getAccessToken();
+    const siteId = await getSharePointSiteId(accessToken);
+    const pool = await getCsrPool();
+
+    const resultsListName = process.env.SHAREPOINT_PRD_APPROVAL_RESULTS_LIST_ID || 'CSR_PRD_Approval_Results';
+
+    // 1. Quét danh sách kết quả phê duyệt trên SharePoint
+    const getUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${resultsListName}/items?$expand=fields`;
+    const response = await axios.get(getUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      timeout: 8000
+    });
+
+    const items = response.data.value || [];
+    if (items.length === 0) {
+      return;
+    }
+
+    console.log(`[PRD Approval Sync] Found ${items.length} PRD approval response(s) to process.`);
+
+    const { syncNewCustomerReps } = require('./customerRepsSync');
+
+    for (const item of items) {
+      const fields = item.fields;
+      const itemId = item.id;
+      const projectId = fields.ProjectId;
+      const outcome = fields.ApprovalOutcome;
+      const comments = fields.PRD_Comments || fields.BOD_Comments || fields.Comments || '';
+
+      if (!projectId || !outcome) {
+        continue;
+      }
+
+      let dbSuccess = false;
+
+      try {
+        if (outcome === 'Approve' || outcome === 'Approved' || outcome === 'Accept') {
+          // Gọi stored procedure duyệt đơn dưới vai trò PRD
+          const result = await pool.request()
+            .input('ProjectId', sql.NVarChar(100), projectId)
+            .input('ActorRole', sql.NVarChar(50), 'PRD')
+            .input('ActorMNV', sql.NVarChar(50), 'TEAMS_PRD')
+            .input('ActorName', sql.NVarChar(200), 'PRD Teams Approval')
+            .input('Note', sql.NVarChar(sql.MAX), comments || 'Được duyệt qua Teams Approval App')
+            .execute('usp_ApproveSubmission');
+
+          const row = result.recordset?.[0];
+          await logAuditAction('Phê duyệt đơn', 'TEAMS_PRD', `Duyệt đơn qua MS Teams`, projectId);
+          await sendNotification(`Đơn ${projectId} đã được phê duyệt bởi PRD (qua Teams)`, 'TEAMS_PRD', projectId);
+
+          if (row?.NewStatus === 'PRD đã duyệt') {
+            const projRes = await pool.request()
+              .input('ProjectId', sql.NVarChar(100), projectId)
+              .query('SELECT CustomerType FROM CSR_Projects WHERE Project_id = @ProjectId');
+            const customerType = projRes.recordset?.[0]?.CustomerType;
+            const isSpecialType = ['Partner', 'Supplier', 'Khách vãng lai', 'Ứng viên phỏng vấn'].includes(customerType);
+
+            if (isSpecialType) {
+              await syncNewCustomerReps(projectId, pool);
+              handleBODApprovalActions(projectId, pool).catch(err => {
+                console.error('[PRD Approval Workflows] Background workflows failed:', err);
+              });
+            } else {
+              // Gửi tiếp lên BOD queue cho Brand
+              const pRes = await pool.request()
+                .input('ProjectId', sql.NVarChar(100), projectId)
+                .execute('usp_GetProjectForTeams');
+              if (pRes.recordset.length > 0) {
+                await sendBODApprovalToSharePointQueue(pRes.recordset[0], pool).catch(err => {
+                  console.error('[PRD Sync] BOD queue error:', err.message);
+                });
+              }
+            }
+          }
+          dbSuccess = true;
+
+        } else if (outcome === 'Reject' || outcome === 'Rejected' || outcome === 'Deny') {
+          await pool.request()
+            .input('ProjectId', sql.NVarChar(100), projectId)
+            .input('ActorRole', sql.NVarChar(50), 'PRD')
+            .input('ActorMNV', sql.NVarChar(50), 'TEAMS_PRD')
+            .input('ActorName', sql.NVarChar(200), 'PRD Teams Approval')
+            .input('Reason', sql.NVarChar(sql.MAX), comments || 'Từ chối qua Teams Approval App')
+            .execute('usp_RejectSubmission');
+
+          await logAuditAction('Từ chối đơn', 'TEAMS_PRD', `Từ chối đơn qua MS Teams`, projectId);
+          await sendNotification(`Đơn ${projectId} đã bị TỪ CHỐI bởi PRD (qua Teams)`, 'TEAMS_PRD', projectId);
+          dbSuccess = true;
+        }
+      } catch (dbErr) {
+        console.error(`[PRD Approval Sync] DB update failed for ${projectId}:`, dbErr.message);
+        if (dbErr.message.includes('không tìm thấy') || dbErr.message.includes('đã được') || dbErr.message.includes('Chỉ duyệt được đơn')) {
+          dbSuccess = true;
+        }
+      }
+
+      if (dbSuccess) {
+        try {
+          const deleteUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${resultsListName}/items/${itemId}`;
+          await axios.delete(deleteUrl, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            timeout: 8000
+          });
+        } catch (delErr) {
+          console.error(`[PRD Approval Sync] Delete error:`, delErr.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[PRD Approval Sync] Error:', err.message);
+  } finally {
+    isPrdSyncing = false;
+  }
+}
+
+function startPRDApprovalSyncScheduler() {
+  console.log('[PRD Approval Sync Scheduler] ⏰ Registered. Checking every 30 seconds...');
+  setTimeout(() => {
+    syncPRDApprovalResults().catch(err => {
+      console.error('[PRD Approval Sync Scheduler] Initial scan failed:', err.message);
+    });
+  }, 20000);
+
+  setInterval(async () => {
+    await syncPRDApprovalResults();
+  }, 30000);
+}
+
 module.exports = {
   sendBODApprovalToSharePointQueue,
   syncBODApprovalResults,
-  startBODApprovalSyncScheduler
+  startBODApprovalSyncScheduler,
+  sendPRDApprovalToSharePointQueue,
+  syncPRDApprovalResults,
+  startPRDApprovalSyncScheduler
 };

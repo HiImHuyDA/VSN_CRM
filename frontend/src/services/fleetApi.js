@@ -19,6 +19,7 @@ export const importDrivers = (rows) => api.post('/fleet/drivers/batch', { rows }
 export const getBookings = (params) => api.get('/fleet/bookings', { params });
 export const createBooking = (data) => api.post('/fleet/bookings', data);
 export const getBookingDetail = (id) => api.get(`/fleet/bookings/${id}`);
+export const updateBooking = (id, data) => api.put(`/fleet/bookings/${id}`, data);
 export const updateBookingStatus = (id, data) => api.put(`/fleet/bookings/${id}/status`, data);
 
 // ── Export ──

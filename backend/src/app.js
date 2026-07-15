@@ -114,8 +114,13 @@ const { startScheduledEmailScheduler } = require('./utils/scheduledEmailSchedule
 startScheduledEmailScheduler();
 startFeedbackScheduler();
 
-// Khởi động bộ lập lịch đồng bộ phê duyệt của BOD (Teams Approvals thông qua SharePoint List)
-const { startBODApprovalSyncScheduler } = require('./utils/bodApprovalSync');
+// Khởi động bộ lập lịch đồng bộ phê duyệt của BOD & PRD (Teams Approvals thông qua SharePoint List)
+const { startBODApprovalSyncScheduler, startPRDApprovalSyncScheduler } = require('./utils/bodApprovalSync');
 startBODApprovalSyncScheduler();
+startPRDApprovalSyncScheduler();
+
+// Khởi động bộ lập lịch đồng bộ phê duyệt xe (Fleet Approvals thông qua SharePoint List)
+const { startFleetApprovalSyncScheduler } = require('./utils/fleetTeamsApproval');
+startFleetApprovalSyncScheduler();
 
 module.exports = app;

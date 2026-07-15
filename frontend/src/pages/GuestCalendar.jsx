@@ -6,10 +6,10 @@ import SubmissionDrawer from '../components/dashboard/SubmissionDrawer';
 import { ComboboxMultiple } from '../components/ui/combobox';
 
 const STATUS_COLORS = {
-  'Chờ phản hồi':  { bg: '#EFF6FF', border: '#93C5FD', text: '#1D4ED8', dot: '#3B82F6' },
-  'PRD đã duyệt':  { bg: '#FFF7ED', border: '#FDBA74', text: '#C2410C', dot: '#F97316' },
-  'BOD đã duyệt':  { bg: '#F0FDF4', border: '#86EFAC', text: '#15803D', dot: '#22C55E' },
-  'Hoàn thành':    { bg: '#f3e8ff', border: '#D4D4D8', text: '#7e22ce', dot: '#a855f7' },
+  'Chờ phản hồi': { bg: '#EFF6FF', border: '#93C5FD', text: '#1D4ED8', dot: '#3B82F6' },
+  'PRD đã duyệt': { bg: '#FFF7ED', border: '#FDBA74', text: '#C2410C', dot: '#F97316' },
+  'BOD đã duyệt': { bg: '#F0FDF4', border: '#86EFAC', text: '#15803D', dot: '#22C55E' },
+  'Hoàn thành': { bg: '#f3e8ff', border: '#D4D4D8', text: '#7e22ce', dot: '#a855f7' },
 };
 
 const WEEKDAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
@@ -19,12 +19,12 @@ function getMonthMatrix(year, month) {
   const firstDay = new Date(year, month, 1);
   let startDay = firstDay.getDay(); // 0=Sun
   startDay = startDay === 0 ? 6 : startDay - 1; // convert to Mon=0
-  
+
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daysInPrevMonth = new Date(year, month, 0).getDate();
-  
+
   const cells = [];
-  
+
   // Previous month padding
   const prevMonthYear = month === 0 ? year - 1 : year;
   const prevMonthIndex = month === 0 ? 11 : month - 1;
@@ -33,13 +33,13 @@ function getMonthMatrix(year, month) {
     const dateStr = `${prevMonthYear}-${String(prevMonthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     cells.push({ day: d, current: false, date: dateStr });
   }
-  
+
   // Current month
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     cells.push({ day: d, current: true, date: dateStr });
   }
-  
+
   // Next month padding
   const nextMonthYear = month === 11 ? year + 1 : year;
   const nextMonthIndex = month === 11 ? 0 : month + 1;
@@ -50,7 +50,7 @@ function getMonthMatrix(year, month) {
       cells.push({ day: d, current: false, date: dateStr });
     }
   }
-  
+
   // Group into weeks
   const weeks = [];
   for (let i = 0; i < cells.length; i += 7) {
@@ -277,7 +277,7 @@ export default function GuestCalendar() {
 
   // Slicer options derived from submissions
   const customerOptions = useMemo(() => [...new Set(submissions.map(s => s.customerName))].filter(Boolean).sort(), [submissions]);
-  
+
   const locationOptions = useMemo(() => {
     const locs = new Set();
     submissions.forEach(s => {
@@ -403,7 +403,7 @@ export default function GuestCalendar() {
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-on-surface mb-1 flex items-center gap-3">
-            <span className="material-symbols-outlined" style={{ fontSize: 28, color: 'var(--color-primary)' }}>calendar_month</span>
+            {/* <span className="material-symbols-outlined" style={{ fontSize: 28, color: 'var(--color-primary)' }}>group</span> */}
             Theo dõi lịch tiếp khách
           </h1>
         </div>
@@ -459,214 +459,214 @@ export default function GuestCalendar() {
             overflow: 'hidden',
             boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
           }}>
-          {/* Weekday Headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--color-outline-variant)' }}>
-            {WEEKDAYS.map((wd, i) => (
-              <div key={wd} style={{
-                padding: '10px 0',
-                textAlign: 'center',
-                fontWeight: 700,
-                fontSize: 13,
-                color: i >= 5 ? 'var(--color-error)' : 'var(--color-on-surface-variant)',
-                background: 'var(--color-surface-container)',
-                letterSpacing: '0.5px',
-              }}>
-                {wd}
-              </div>
-            ))}
-          </div>
-
-          {/* Week Rows */}
-          {loading ? (
-            <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-on-surface-variant)' }}>
-              <span className="material-symbols-outlined animate-spin" style={{ fontSize: 28 }}>refresh</span>
-              <p style={{ marginTop: 8 }}>Đang tải lịch...</p>
-            </div>
-          ) : (
-            weeks.map((week, wi) => {
-              const weekStart = week[0].date;
-              const weekEnd = week[6].date;
-
-              // Tìm các sự kiện kéo dài có giao với tuần này
-              const weekEvents = [];
-              spanningEvents.forEach(event => {
-                const overlaps = event.startDate <= weekEnd && event.endDate >= weekStart;
-                if (overlaps) {
-                  const partStart = event.startDate < weekStart ? weekStart : event.startDate;
-                  const partEnd = event.endDate > weekEnd ? weekEnd : event.endDate;
-                  const startCol = week.findIndex(cell => cell.date === partStart);
-                  const endCol = week.findIndex(cell => cell.date === partEnd);
-                  
-                  if (startCol !== -1 && endCol !== -1) {
-                    weekEvents.push({
-                      ...event,
-                      startCol,
-                      endCol,
-                      partStart,
-                      partEnd,
-                    });
-                  }
-                }
-              });
-
-              // Sắp xếp sự kiện để render ổn định: dài hơn lên trước, sớm hơn lên trước
-              const sortedWeekEvents = weekEvents.sort((a, b) => {
-                const spanA = a.endCol - a.startCol;
-                const spanB = b.endCol - b.startCol;
-                if (spanA !== spanB) return spanB - spanA;
-                if (a.startCol !== b.startCol) return a.startCol - b.startCol;
-                return a.projectId.localeCompare(b.projectId);
-              });
-
-              // Phân bổ track (greedy coloring)
-              const tracks = [];
-              sortedWeekEvents.forEach(ev => {
-                let assignedTrack = 0;
-                while (true) {
-                  const hasOverlap = (tracks[assignedTrack] || []).some(occupied => {
-                    return ev.startCol <= occupied.end && ev.endCol >= occupied.start;
-                  });
-                  if (!hasOverlap) {
-                    break;
-                  }
-                  assignedTrack++;
-                }
-                if (!tracks[assignedTrack]) tracks[assignedTrack] = [];
-                tracks[assignedTrack].push({ start: ev.startCol, end: ev.endCol });
-                ev.track = assignedTrack;
-              });
-
-              const maxTrack = sortedWeekEvents.reduce((max, ev) => Math.max(max, ev.track), -1);
-              const trackCount = maxTrack + 1;
-              const weekHeight = Math.max(120, 36 + trackCount * 28 + 8);
-
-              return (
-                <div key={wi} style={{
-                  position: 'relative',
-                  borderBottom: wi < weeks.length - 1 ? '1px solid var(--color-outline-variant)' : 'none',
-                  minHeight: weekHeight,
+            {/* Weekday Headers */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--color-outline-variant)' }}>
+              {WEEKDAYS.map((wd, i) => (
+                <div key={wd} style={{
+                  padding: '10px 0',
+                  textAlign: 'center',
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: i >= 5 ? 'var(--color-error)' : 'var(--color-on-surface-variant)',
+                  background: 'var(--color-surface-container)',
+                  letterSpacing: '0.5px',
                 }}>
-                  {/* Grid nền chứa ô ngày */}
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(7, 1fr)',
-                    position: 'absolute',
-                    top: 0, left: 0, right: 0, bottom: 0,
-                    zIndex: 0,
-                  }}>
-                    {week.map((cell, ci) => {
-                      const isToday = cell.date === todayStr;
-                      const isWeekend = ci >= 5;
-                      
-                      return (
-                        <div key={ci} style={{
-                          borderRight: ci < 6 ? '1px solid var(--color-outline-variant)' : 'none',
-                          background: !cell.current ? 'rgba(0,0,0,0.02)' : isToday ? 'rgba(91,106,240,0.04)' : isWeekend ? 'rgba(0,0,0,0.01)' : 'transparent',
-                          padding: '6px 8px',
-                          boxSizing: 'border-box',
-                        }}>
-                          {/* Day Number */}
-                          <div style={{
-                            fontSize: 13,
-                            fontWeight: isToday ? 800 : 600,
-                            color: !cell.current ? 'var(--color-on-surface-variant)' : isToday ? 'white' : isWeekend ? 'var(--color-error)' : 'var(--color-on-surface)',
-                            marginBottom: 4,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}>
-                            {isToday ? (
-                              <span style={{
-                                background: 'var(--color-primary)',
-                                color: 'white',
-                                borderRadius: '50%',
-                                width: 26, height: 26,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: 13,
-                                fontWeight: 800,
-                              }}>
-                                {cell.day}
-                              </span>
-                            ) : (
-                              cell.day
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Lớp hiển thị các card kéo dài */}
-                  <div style={{
-                    position: 'absolute',
-                    top: 36,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    pointerEvents: 'none',
-                    zIndex: 10,
-                  }}>
-                    {sortedWeekEvents.map((ev, ei) => {
-                      const colors = STATUS_COLORS[ev.status] || STATUS_COLORS['Chờ phản hồi'];
-                      const isContFromPrev = ev.startDate < week[0].date;
-                      const isContToNext = ev.endDate > week[6].date;
-                      
-                      return (
-                        <div
-                          key={ei}
-                          onClick={() => handleCardClick(ev.projectId)}
-                          title={`${ev.customerName} — ${ev.destination} (${ev.status})\n${ev.meetingTopic || ''}`}
-                          style={{
-                            position: 'absolute',
-                            left: `${ev.startCol * 14.2857}%`,
-                            width: `${(ev.endCol - ev.startCol + 1) * 14.2857}%`,
-                            top: `${ev.track * 28}px`,
-                            height: 24,
-                            padding: '0 4px',
-                            boxSizing: 'border-box',
-                            pointerEvents: 'auto',
-                          }}
-                        >
-                          <div
-                            style={{
-                              background: colors.bg,
-                              padding: '2px 8px',
-                              cursor: 'pointer',
-                              fontSize: 11,
-                              lineHeight: '1.4',
-                              color: colors.text,
-                              fontWeight: 600,
-                              overflow: 'hidden',
-                              whiteSpace: 'nowrap',
-                              textOverflow: 'ellipsis',
-                              transition: 'transform 0.15s, box-shadow 0.15s',
-                              height: '100%',
-                              boxSizing: 'border-box',
-                              borderTop: `1px solid ${colors.border || 'transparent'}`,
-                              borderBottom: `1px solid ${colors.border || 'transparent'}`,
-                              borderRight: isContToNext ? 'none' : `1px solid ${colors.border || 'transparent'}`,
-                              borderLeft: isContFromPrev ? `1px solid ${colors.border || 'transparent'}` : `3px solid ${colors.dot}`,
-                              borderTopLeftRadius: isContFromPrev ? 0 : 4,
-                              borderBottomLeftRadius: isContFromPrev ? 0 : 4,
-                              borderTopRightRadius: isContToNext ? 0 : 4,
-                              borderBottomRightRadius: isContToNext ? 0 : 4,
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.01)'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)'; }}
-                            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}
-                          >
-                            {ev.customerName}
-                            <span style={{ fontWeight: 400, opacity: 0.8, marginLeft: 4 }}>- {ev.destination}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {wd}
                 </div>
-              );
-            })
-          )}
+              ))}
+            </div>
+
+            {/* Week Rows */}
+            {loading ? (
+              <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-on-surface-variant)' }}>
+                <span className="material-symbols-outlined animate-spin" style={{ fontSize: 28 }}>refresh</span>
+                <p style={{ marginTop: 8 }}>Đang tải lịch...</p>
+              </div>
+            ) : (
+              weeks.map((week, wi) => {
+                const weekStart = week[0].date;
+                const weekEnd = week[6].date;
+
+                // Tìm các sự kiện kéo dài có giao với tuần này
+                const weekEvents = [];
+                spanningEvents.forEach(event => {
+                  const overlaps = event.startDate <= weekEnd && event.endDate >= weekStart;
+                  if (overlaps) {
+                    const partStart = event.startDate < weekStart ? weekStart : event.startDate;
+                    const partEnd = event.endDate > weekEnd ? weekEnd : event.endDate;
+                    const startCol = week.findIndex(cell => cell.date === partStart);
+                    const endCol = week.findIndex(cell => cell.date === partEnd);
+
+                    if (startCol !== -1 && endCol !== -1) {
+                      weekEvents.push({
+                        ...event,
+                        startCol,
+                        endCol,
+                        partStart,
+                        partEnd,
+                      });
+                    }
+                  }
+                });
+
+                // Sắp xếp sự kiện để render ổn định: dài hơn lên trước, sớm hơn lên trước
+                const sortedWeekEvents = weekEvents.sort((a, b) => {
+                  const spanA = a.endCol - a.startCol;
+                  const spanB = b.endCol - b.startCol;
+                  if (spanA !== spanB) return spanB - spanA;
+                  if (a.startCol !== b.startCol) return a.startCol - b.startCol;
+                  return a.projectId.localeCompare(b.projectId);
+                });
+
+                // Phân bổ track (greedy coloring)
+                const tracks = [];
+                sortedWeekEvents.forEach(ev => {
+                  let assignedTrack = 0;
+                  while (true) {
+                    const hasOverlap = (tracks[assignedTrack] || []).some(occupied => {
+                      return ev.startCol <= occupied.end && ev.endCol >= occupied.start;
+                    });
+                    if (!hasOverlap) {
+                      break;
+                    }
+                    assignedTrack++;
+                  }
+                  if (!tracks[assignedTrack]) tracks[assignedTrack] = [];
+                  tracks[assignedTrack].push({ start: ev.startCol, end: ev.endCol });
+                  ev.track = assignedTrack;
+                });
+
+                const maxTrack = sortedWeekEvents.reduce((max, ev) => Math.max(max, ev.track), -1);
+                const trackCount = maxTrack + 1;
+                const weekHeight = Math.max(120, 36 + trackCount * 28 + 8);
+
+                return (
+                  <div key={wi} style={{
+                    position: 'relative',
+                    borderBottom: wi < weeks.length - 1 ? '1px solid var(--color-outline-variant)' : 'none',
+                    minHeight: weekHeight,
+                  }}>
+                    {/* Grid nền chứa ô ngày */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(7, 1fr)',
+                      position: 'absolute',
+                      top: 0, left: 0, right: 0, bottom: 0,
+                      zIndex: 0,
+                    }}>
+                      {week.map((cell, ci) => {
+                        const isToday = cell.date === todayStr;
+                        const isWeekend = ci >= 5;
+
+                        return (
+                          <div key={ci} style={{
+                            borderRight: ci < 6 ? '1px solid var(--color-outline-variant)' : 'none',
+                            background: !cell.current ? 'rgba(0,0,0,0.02)' : isToday ? 'rgba(91,106,240,0.04)' : isWeekend ? 'rgba(0,0,0,0.01)' : 'transparent',
+                            padding: '6px 8px',
+                            boxSizing: 'border-box',
+                          }}>
+                            {/* Day Number */}
+                            <div style={{
+                              fontSize: 13,
+                              fontWeight: isToday ? 800 : 600,
+                              color: !cell.current ? 'var(--color-on-surface-variant)' : isToday ? 'white' : isWeekend ? 'var(--color-error)' : 'var(--color-on-surface)',
+                              marginBottom: 4,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 4,
+                            }}>
+                              {isToday ? (
+                                <span style={{
+                                  background: 'var(--color-primary)',
+                                  color: 'white',
+                                  borderRadius: '50%',
+                                  width: 26, height: 26,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 13,
+                                  fontWeight: 800,
+                                }}>
+                                  {cell.day}
+                                </span>
+                              ) : (
+                                cell.day
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Lớp hiển thị các card kéo dài */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 36,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      pointerEvents: 'none',
+                      zIndex: 10,
+                    }}>
+                      {sortedWeekEvents.map((ev, ei) => {
+                        const colors = STATUS_COLORS[ev.status] || STATUS_COLORS['Chờ phản hồi'];
+                        const isContFromPrev = ev.startDate < week[0].date;
+                        const isContToNext = ev.endDate > week[6].date;
+
+                        return (
+                          <div
+                            key={ei}
+                            onClick={() => handleCardClick(ev.projectId)}
+                            title={`${ev.customerName} — ${ev.destination} (${ev.status})\n${ev.meetingTopic || ''}`}
+                            style={{
+                              position: 'absolute',
+                              left: `${ev.startCol * 14.2857}%`,
+                              width: `${(ev.endCol - ev.startCol + 1) * 14.2857}%`,
+                              top: `${ev.track * 28}px`,
+                              height: 24,
+                              padding: '0 4px',
+                              boxSizing: 'border-box',
+                              pointerEvents: 'auto',
+                            }}
+                          >
+                            <div
+                              style={{
+                                background: colors.bg,
+                                padding: '2px 8px',
+                                cursor: 'pointer',
+                                fontSize: 11,
+                                lineHeight: '1.4',
+                                color: colors.text,
+                                fontWeight: 600,
+                                overflow: 'hidden',
+                                whiteSpace: 'nowrap',
+                                textOverflow: 'ellipsis',
+                                transition: 'transform 0.15s, box-shadow 0.15s',
+                                height: '100%',
+                                boxSizing: 'border-box',
+                                borderTop: `1px solid ${colors.border || 'transparent'}`,
+                                borderBottom: `1px solid ${colors.border || 'transparent'}`,
+                                borderRight: isContToNext ? 'none' : `1px solid ${colors.border || 'transparent'}`,
+                                borderLeft: isContFromPrev ? `1px solid ${colors.border || 'transparent'}` : `3px solid ${colors.dot}`,
+                                borderTopLeftRadius: isContFromPrev ? 0 : 4,
+                                borderBottomLeftRadius: isContFromPrev ? 0 : 4,
+                                borderTopRightRadius: isContToNext ? 0 : 4,
+                                borderBottomRightRadius: isContToNext ? 0 : 4,
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.01)'; e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = 'none'; }}
+                            >
+                              {ev.customerName}
+                              <span style={{ fontWeight: 400, opacity: 0.8, marginLeft: 4 }}>- {ev.destination}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
 

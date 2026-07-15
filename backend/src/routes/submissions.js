@@ -7,7 +7,7 @@ const authenticateToken = require('../middleware/auth');
 const { getCsrPool, sql } = require('../config/database');
 const { logAuditAction } = require('../utils/auditLogger');
 const { sendNotification } = require('../utils/notification');
-const { sendBODApprovalToSharePointQueue } = require('../utils/bodApprovalSync');
+const { sendBODApprovalToSharePointQueue, sendPRDApprovalToSharePointQueue } = require('../utils/bodApprovalSync');
 const {
   handleBODApprovalActions,
   handleProjectEditNotification,
@@ -257,6 +257,20 @@ router.post('/', authenticateToken, async (req, res, next) => {
     // Log Submit
     await logAuditAction('Tạo mới đơn', submitterMNV, `Tạo mới đơn cho ${customerName}`, row?.Project_id);
     await sendNotification(`Có đơn trình duyệt mới từ mã NV: ${submitterMNV || 'N/A'}`, submitterMNV, row?.Project_id);
+
+    // Kích hoạt gửi Teams approval cho PRD đối với đơn Brand (chờ PRD duyệt)
+    if (!isSpecialType && row?.Project_id && row?.Project_id !== 'ERROR' && row?.Project_id !== 'DUPLICATE') {
+      try {
+        const pRes = await pool.request()
+          .input('ProjectId', sql.NVarChar(100), row.Project_id)
+          .execute('usp_GetProjectForTeams');
+        if (pRes.recordset.length > 0) {
+          await sendPRDApprovalToSharePointQueue(pRes.recordset[0], pool);
+        }
+      } catch (teamsErr) {
+        console.error('[Submissions Router] Failed to send Teams approval queue for PRD:', teamsErr.message);
+      }
+    }
 
     res.status(201).json({
       success: true,

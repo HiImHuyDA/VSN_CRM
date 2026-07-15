@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { getBookingDetail, updateBookingStatus, getVehicles, getDrivers } from '../../services/fleetApi';
 import { formatDate } from '../../utils/helpers';
 
 export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onStatusUpdated, currentUser }) {
+  const navigate = useNavigate();
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +45,7 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
       toast.error('Lỗi khi tải chi tiết yêu cầu đặt xe: ' + err.message);
       onClose();
     } finally {
+      loading && setLoading(false);
       setLoading(false);
     }
   };
@@ -68,20 +71,39 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
     setShowApproveModal(true);
   };
 
+  const handleSupervisorApprove = async () => {
+    if (!window.confirm('Xác nhận phê duyệt yêu cầu đi công tác này?')) return;
+    setSubmitting(true);
+    try {
+      const res = await updateBookingStatus(bookingId, {
+        newStatus: 'Giám sát đã duyệt'
+      });
+      if (res.success) {
+        toast.success('Đã phê duyệt yêu cầu đi công tác.');
+        loadBookingDetails();
+        if (onStatusUpdated) onStatusUpdated();
+      }
+    } catch (err) {
+      toast.error(err.message || 'Lỗi khi phê duyệt');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleApprove = async () => {
     if (!selectedVehicleId) return toast.error('Vui lòng chọn xe phân công');
 
     setSubmitting(true);
     try {
       const res = await updateBookingStatus(bookingId, {
-        newStatus: 'Đã duyệt',
+        newStatus: 'Team Admin đã duyệt',
         vehicleId: selectedVehicleId,
         driverId: selectedDriverId || null,
         assignedNote: assignedNote
       });
 
       if (res.success) {
-        toast.success('Đã phê duyệt yêu cầu đặt xe thành công!');
+        toast.success('Đã điều phối phương tiện thành công!');
         setShowApproveModal(false);
         loadBookingDetails();
         if (onStatusUpdated) onStatusUpdated();
@@ -98,8 +120,9 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
 
     setSubmitting(true);
     try {
+      const nextStatus = booking.Status === 'Giám sát đã duyệt' ? 'Team Admin từ chối' : 'Giám sát từ chối';
       const res = await updateBookingStatus(bookingId, {
-        newStatus: 'Từ chối',
+        newStatus: nextStatus,
         rejectedReason: rejectedReason
       });
 
@@ -156,16 +179,21 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
   if (!isOpen) return null;
 
   const role = currentUser?.role;
-  const isApprover = ['Admin', 'BOD', 'PRD'].includes(role);
+  const isApprover = ['Admin', 'BOD', 'PRD', 'TeamAdmin'].includes(role);
   const isCreator = currentUser?.mnv === booking?.RequesterMNV;
 
   const getStatusBadge = (status) => {
     const map = {
+      'Chờ phản hồi': { bg: 'bg-blue-100', text: 'text-blue-700' },
+      'Giám sát đã duyệt': { bg: 'bg-amber-100', text: 'text-amber-700' },
+      'Giám sát từ chối': { bg: 'bg-red-100', text: 'text-red-700' },
+      'Team Admin đã duyệt': { bg: 'bg-green-100', text: 'text-green-700' },
+      'Team Admin từ chối': { bg: 'bg-red-100', text: 'text-red-700' },
       'Đã duyệt': { bg: 'bg-green-100', text: 'text-green-700' },
       'Từ chối': { bg: 'bg-red-100', text: 'text-red-700' },
       'Đã hủy': { bg: 'bg-gray-200', text: 'text-gray-700' },
-      'Chờ duyệt': { bg: 'bg-blue-100', text: 'text-blue-700' },
       'Hoàn thành': { bg: 'bg-purple-100', text: 'text-purple-700' },
+      'Chờ duyệt': { bg: 'bg-blue-100', text: 'text-blue-700' },
     };
     const s = map[status] || { bg: 'bg-gray-100', text: 'text-gray-600' };
     return (
@@ -265,6 +293,10 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
                     <span className="font-semibold">{booking.Priority}</span>
                   </div>
                   <div>
+                    <span className="text-xs text-on-surface-variant block">Loại phương tiện:</span>
+                    <span className="font-semibold">{booking.VehicleType || 'Xe công ty'}</span>
+                  </div>
+                  <div>
                     <span className="text-xs text-on-surface-variant block">Ngày tạo yêu cầu:</span>
                     <span className="font-semibold">{formatDate(booking.CreatedAt, 'dd/MM/yyyy HH:mm')}</span>
                   </div>
@@ -332,11 +364,11 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               )}
 
               {/* Thông tin Từ chối/Hủy nếu có */}
-              {booking.Status === 'Từ chối' && (
+              {['Từ chối', 'Giám sát từ chối', 'Team Admin từ chối'].includes(booking.Status) && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
                   <h4 className="text-xs font-bold text-red-800 tracking-wider uppercase mb-1">❌ Lý Do Từ Chối</h4>
                   <p className="text-sm text-red-900 font-semibold">{booking.RejectedReason || 'Không ghi rõ lý do.'}</p>
-                  <p className="text-xs text-red-700 mt-2">Phê duyệt bởi: {booking.ApprovedBy} vào lúc {formatDate(booking.ApprovedAt, 'dd/MM/yyyy HH:mm')}</p>
+                  <p className="text-xs text-red-700 mt-2">Phê duyệt bởi: {booking.ApprovedBy || 'Hệ thống'} vào lúc {formatDate(booking.ApprovedAt, 'dd/MM/yyyy HH:mm')}</p>
                 </div>
               )}
 
@@ -352,9 +384,50 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
 
         {/* Footer Actions */}
         {!loading && booking && (
-          <div className="p-5 border-t border-border bg-gray-50 flex gap-2 justify-end">
-            {/* Chờ duyệt + là Approver -> Duyệt / Từ chối */}
-            {booking.Status === 'Chờ duyệt' && isApprover && (
+          <div className="p-5 border-t border-border bg-gray-50 flex gap-2 justify-end flex-wrap">
+            {/* Sửa đơn (creator hoặc admin được phép ở các trạng thái cho phép) */}
+            {(isCreator || role === 'Admin') && ['Chờ phản hồi', 'Giám sát từ chối', 'Team Admin từ chối', 'Team Admin đã duyệt', 'Đã duyệt', 'Chờ duyệt'].includes(booking.Status) && (
+              <button
+                onClick={() => {
+                  navigate(`/vehicle/new?bookingId=${booking.Id}`);
+                  onClose();
+                }}
+                className="btn btn-outline text-primary border-primary hover:bg-blue-50 flex-1 sm:flex-none"
+              >
+                Chỉnh sửa
+              </button>
+            )}
+
+            {/* Hủy đơn (creator hoặc admin được phép ở các trạng thái cho phép) */}
+            {(isCreator || role === 'Admin') && ['Chờ phản hồi', 'Giám sát từ chối', 'Team Admin từ chối', 'Team Admin đã duyệt', 'Đã duyệt', 'Chờ duyệt'].includes(booking.Status) && (
+              <button
+                onClick={() => setShowCancelModal(true)}
+                className="btn btn-outline text-danger border-danger hover:bg-red-50 flex-1 sm:flex-none"
+              >
+                Hủy đơn
+              </button>
+            )}
+
+            {/* Cấp 1: Chờ phản hồi -> Giám sát duyệt / Từ chối (bất cứ approver nào cũng được) */}
+            {(booking.Status === 'Chờ phản hồi' || booking.Status === 'Chờ duyệt') && isApprover && (
+              <>
+                <button
+                  onClick={() => setShowRejectModal(true)}
+                  className="btn btn-outline text-danger hover:bg-red-50 hover:border-red-300 flex-1 sm:flex-none"
+                >
+                  Từ chối
+                </button>
+                <button
+                  onClick={handleSupervisorApprove}
+                  className="btn btn-primary flex-1 sm:flex-none"
+                >
+                  Duyệt Đơn
+                </button>
+              </>
+            )}
+
+            {/* Cấp 2: Giám sát đã duyệt -> Team Admin duyệt & phân xe (chỉ Team Admin hoặc Admin) */}
+            {booking.Status === 'Giám sát đã duyệt' && (role === 'TeamAdmin' || role === 'Admin') && (
               <>
                 <button
                   onClick={() => setShowRejectModal(true)}
@@ -371,18 +444,8 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               </>
             )}
 
-            {/* Chờ duyệt + là Creator -> Hủy yêu cầu */}
-            {booking.Status === 'Chờ duyệt' && isCreator && !isApprover && (
-              <button
-                onClick={() => setShowCancelModal(true)}
-                className="btn btn-outline text-danger hover:bg-red-50 hover:border-red-300 w-full"
-              >
-                Hủy yêu cầu
-              </button>
-            )}
-
-            {/* Đã duyệt + là Approver -> Hoàn thành */}
-            {booking.Status === 'Đã duyệt' && isApprover && (
+            {/* Đã duyệt / Team Admin đã duyệt -> Hoàn thành (Admin/TeamAdmin/BOD/PRD) */}
+            {['Đã duyệt', 'Team Admin đã duyệt'].includes(booking.Status) && isApprover && (
               <button
                 onClick={handleComplete}
                 className="btn btn-primary w-full bg-purple-600 hover:bg-purple-700 border-none"

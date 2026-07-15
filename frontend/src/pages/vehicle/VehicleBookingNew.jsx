@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { createBooking, getVehicles, getDrivers, suggestLocations, resolveLocation } from '../../services/fleetApi';
+import { createBooking, updateBooking, getBookingDetail, getVehicles, getDrivers, suggestLocations, resolveLocation } from '../../services/fleetApi';
 import { getLocations } from '../../services/api';
 import AutocompleteInput from '../../components/ui/AutocompleteInput';
 
@@ -16,7 +16,17 @@ const VEHICLE_TYPES = [
 
 export default function VehicleBookingNew() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editBookingId = searchParams.get('bookingId');
   const [submitting, setSubmitting] = useState(false);
+
+  const userStr = localStorage.getItem('csr_user');
+  let userRole = '';
+  if (userStr) {
+    try {
+      userRole = JSON.parse(userStr).role;
+    } catch {}
+  }
 
   // System Lists
   const [systemLocations, setSystemLocations] = useState([]);
@@ -135,8 +145,35 @@ export default function VehicleBookingNew() {
       })
       .catch(err => console.error('Lỗi tải tài xế:', err));
 
+    if (editBookingId) {
+      getBookingDetail(editBookingId)
+        .then(res => {
+          if (res.success && res.data) {
+            const b = res.data;
+            setPickupLocation(b.PickupLocation || '');
+            setDestination(b.Destination || '');
+            setStops(b.Stops ? JSON.parse(b.Stops) : []);
+            setDepartureTime(b.DepartureTime ? b.DepartureTime.substring(0, 16) : '');
+            setReturnTime(b.ReturnTime ? b.ReturnTime.substring(0, 16) : '');
+            setPurpose(b.Purpose || '');
+            setPassengerCount(b.PassengerCount || 1);
+            setPriority(b.Priority || 'Bình thường');
+            setVehicleType(b.VehicleType || 'Xe công ty');
+            setNotes(b.Notes || '');
+            setAttendees(b.Attendees || '');
+            setAttendeesEmail(b.AttendeesEmail || '');
+            setSelectedVehicleId(b.VehicleId || '');
+            setSelectedDriverId(b.DriverId || '');
+          }
+        })
+        .catch(err => {
+          console.error('Lỗi tải chi tiết đơn sửa:', err);
+          toast.error('Không thể tải chi tiết đơn cần sửa');
+        });
+    }
+
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
+  }, [editBookingId]);
 
   // Leaflet Modal initialization
   useEffect(() => {
@@ -542,6 +579,7 @@ export default function VehicleBookingNew() {
         purpose,
         passengerCount,
         priority,
+        vehicleType,
         notes: notes.trim() || null,
         vehicleId: priority === 'VIP' && vehicleType === 'Xe công ty' && selectedVehicleId ? parseInt(selectedVehicleId) : null,
         driverId: priority === 'VIP' && vehicleType === 'Xe công ty' && selectedDriverId ? parseInt(selectedDriverId) : null,
@@ -549,15 +587,22 @@ export default function VehicleBookingNew() {
         attendeesEmail: attendeesEmail.trim() || null
       };
 
-      const res = await createBooking(payload);
-
-      if (res.success) {
-        if (res.data.Status === 'Đã duyệt') {
-          toast.success(`Đã tự động phê duyệt & phân xe cho chuyến đi VIP! Mã: ${res.data.BookingCode}`);
-        } else {
-          toast.success(`Tạo yêu cầu đặt xe thành công! Mã: ${res.data.BookingCode}`);
+      if (editBookingId) {
+        const res = await updateBooking(editBookingId, payload);
+        if (res.success) {
+          toast.success('Cập nhật và gửi lại yêu cầu duyệt thành công!');
+          navigate('/vehicle');
         }
-        navigate('/vehicle');
+      } else {
+        const res = await createBooking(payload);
+        if (res.success) {
+          if (res.data.Status === 'Team Admin đã duyệt') {
+            toast.success(`Đã tự động phê duyệt & phân xe cho chuyến đi VIP! Mã: ${res.data.BookingCode}`);
+          } else {
+            toast.success(`Tạo yêu cầu đặt xe thành công! Mã: ${res.data.BookingCode}`);
+          }
+          navigate('/vehicle');
+        }
       }
     } catch (err) {
       toast.error(err.message || 'Lỗi khi gửi yêu cầu đặt xe');
@@ -571,7 +616,7 @@ export default function VehicleBookingNew() {
       {/* Header */}
       <div className="mb-6 flex justify-between items-end">
         <div>
-          <h1 className="text-2xl font-bold text-on-surface mb-1">Tạo Yêu Cầu Xe Công Tác</h1>
+          <h1 className="text-2xl font-bold text-on-surface mb-1">{editBookingId ? 'Chỉnh Sửa Yêu Cầu Xe Công Tác' : 'Tạo Yêu Cầu Xe Công Tác'}</h1>
         </div>
         <button
           onClick={() => navigate('/vehicle')}
@@ -901,7 +946,7 @@ export default function VehicleBookingNew() {
             className="btn btn-primary min-w-[150px]"
             disabled={submitting}
           >
-            {submitting ? 'Đang gửi...' : 'Gửi yêu cầu'}
+            {submitting ? 'Đang gửi...' : editBookingId ? 'Lưu Thay Đổi' : 'Gửi yêu cầu'}
           </button>
         </div>
       </form>

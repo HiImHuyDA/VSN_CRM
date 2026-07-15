@@ -307,9 +307,9 @@ export default function VehicleConfig() {
       </div>
 
       {/* Main Content Pane */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="flex flex-col md:flex-row gap-6">
         {/* Left Side: Table Lists */}
-        <div className="lg:col-span-2 card p-4">
+        <div className="card p-4 overflow-hidden flex flex-col" style={{ flex: 1 }}>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-md font-bold text-on-surface">
               {activeTab === 'vehicles' && 'Danh sách xe hiện có'}
@@ -448,13 +448,8 @@ export default function VehicleConfig() {
         </div>
 
         {/* Right Side: Form Editor */}
-        <div className="card p-4">
-          {editingId === null ? (
-            <div className="h-full flex flex-col justify-center items-center text-center p-8 text-on-surface-variant border border-dashed border-border rounded-xl">
-              <span className="material-symbols-outlined text-[36px] mb-2 opacity-50">edit_note</span>
-              <p className="text-sm">Chọn một dòng để sửa thông tin hoặc bấm "Thêm mới" để nhập mới.</p>
-            </div>
-          ) : (
+        {editingId !== null && (
+          <div className="card p-4" style={{ width: '100%', maxWidth: '360px', flexShrink: 0 }}>
             <div className="flex flex-col gap-4">
               <div className="flex justify-between items-center border-b border-border pb-2 mb-2">
                 <h3 className="font-bold text-on-surface">
@@ -704,8 +699,8 @@ export default function VehicleConfig() {
                 </>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
       {showImport && (
         <ExcelImportModal

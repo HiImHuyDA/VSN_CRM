@@ -5,7 +5,10 @@ import { getBookings, exportBookingsUrl } from '../../services/fleetApi';
 import { formatDate } from '../../utils/helpers';
 import VehicleBookingDetail from './VehicleBookingDetail';
 
-const STATUS_OPTIONS = ['Chờ duyệt', 'Đã duyệt', 'Từ chối', 'Đã hủy', 'Hoàn thành'];
+const STATUS_OPTIONS = [
+  'Chờ phản hồi', 'Giám sát đã duyệt', 'Giám sát từ chối',
+  'Team Admin đã duyệt', 'Team Admin từ chối', 'Đã hủy', 'Hoàn thành'
+];
 
 export default function VehicleBookingList({ currentUser }) {
   const navigate = useNavigate();
@@ -26,7 +29,7 @@ export default function VehicleBookingList({ currentUser }) {
   const activeTab = searchParams.get('tab') || 'all'; // all, mine
   const selectedBookingId = searchParams.get('bookingId') || null;
 
-  const isApprover = ['Admin', 'BOD', 'PRD'].includes(currentUser?.role);
+  const isApprover = ['Admin', 'BOD', 'PRD', 'TeamAdmin'].includes(currentUser?.role);
 
   useEffect(() => {
     fetchBookings();
@@ -121,11 +124,16 @@ export default function VehicleBookingList({ currentUser }) {
 
   const getStatusBadge = (status) => {
     const map = {
+      'Chờ phản hồi': { bg: 'bg-blue-100', text: 'text-blue-700' },
+      'Giám sát đã duyệt': { bg: 'bg-amber-100', text: 'text-amber-700' },
+      'Giám sát từ chối': { bg: 'bg-red-100', text: 'text-red-700' },
+      'Team Admin đã duyệt': { bg: 'bg-green-100', text: 'text-green-700' },
+      'Team Admin từ chối': { bg: 'bg-red-100', text: 'text-red-700' },
       'Đã duyệt': { bg: 'bg-green-100', text: 'text-green-700' },
       'Từ chối': { bg: 'bg-red-100', text: 'text-red-700' },
       'Đã hủy': { bg: 'bg-gray-200', text: 'text-gray-700' },
-      'Chờ duyệt': { bg: 'bg-blue-100', text: 'text-blue-700' },
       'Hoàn thành': { bg: 'bg-purple-100', text: 'text-purple-700' },
+      'Chờ duyệt': { bg: 'bg-blue-100', text: 'text-blue-700' },
     };
     const s = map[status] || { bg: 'bg-gray-100', text: 'text-gray-600' };
     return (

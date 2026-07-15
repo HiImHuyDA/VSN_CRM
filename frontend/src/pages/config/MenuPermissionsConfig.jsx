@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { getMenuPermissionsMatrix, updateMenuPermissions } from '../../services/api';
 import { getMenuIcon } from '../../utils/menuIcons';
 
-const ROLES = ['BOD', 'PRD', 'User'];
+const ROLES = ['BOD', 'PRD', 'TeamAdmin', 'User'];
 
 export default function MenuPermissionsConfig() {
     const [menus, setMenus] = useState([]);

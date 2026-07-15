@@ -88,6 +88,15 @@ router.post('/sync', async (req, res, next) => {
         }
         console.log(`✅ Sync done: ${result.rowsAffected} employees`);
 
+        // Tự động đồng bộ email quản lý trực tiếp từ SharePoint list Quản Lý Nhân Sự
+        try {
+          const { syncSupervisorEmails } = require('../utils/employeeSync');
+          await syncSupervisorEmails();
+          console.log('[Auto Supervisor Sync] ✅ Done.');
+        } catch (syncSupErr) {
+          console.error('[Auto Supervisor Sync] ❌ Failed:', syncSupErr.message);
+        }
+
         // Tự động tạo tài khoản (User) cho các nhân viên mới được thêm vào từ Excel
         const newEmployees = result.newEmployees || [];
         if (newEmployees.length > 0) {

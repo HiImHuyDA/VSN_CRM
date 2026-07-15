@@ -12,12 +12,16 @@ const {
     notifyRequesterApproved,
     notifyRequesterRejected,
 } = require('../utils/fleetNotification');
+const {
+    sendSupervisorApprovalToQueue,
+    sendTeamAdminApprovalToQueue
+} = require('../utils/fleetTeamsApproval');
 
 // Toan bo endpoint yeu cau dang nhap
 router.use(authenticateToken);
 
 // ── Helper ──────────────────────────────────────────────────────
-const APPROVAL_ROLES = ['Admin', 'BOD', 'PRD'];
+const APPROVAL_ROLES = ['Admin', 'BOD', 'PRD', 'TeamAdmin'];
 
 function isApprover(role) {
     return APPROVAL_ROLES.includes(role);
@@ -296,7 +300,7 @@ router.post('/bookings', async (req, res, next) => {
             pickupLocation, destination, stops,
             departureTime, returnTime,
             purpose, passengerCount = 1, priority = 'Bình thường', notes,
-            vehicleId, driverId, attendees, attendeesEmail,
+            vehicleId, driverId, attendees, attendeesEmail, vehicleType,
         } = req.body;
 
         // Validation
@@ -346,12 +350,13 @@ router.post('/bookings', async (req, res, next) => {
             .input('DriverId',       sql.Int,             driverId || null)
             .input('Attendees',      sql.NVarChar(sql.MAX), attendees || null)
             .input('AttendeesEmail', sql.NVarChar(sql.MAX), attendeesEmail || null)
+            .input('VehicleType',    sql.NVarChar(100),   vehicleType || 'Xe công ty')
             .execute('usp_Fleet_Booking_Create');
 
         const newBooking = result.recordset[0];
 
         // Neu da duyet ngay khi tao (danh cho VIP)
-        const isAutoApproved = newBooking.Status === 'Đã duyệt';
+        const isAutoApproved = newBooking.Status === 'Team Admin đã duyệt';
 
         if (isAutoApproved) {
             // Gui email cho nguoi dat (da duyet)
@@ -360,9 +365,11 @@ router.post('/bookings', async (req, res, next) => {
                 ApprovedBy: requesterName,
             }, pool).catch(err => console.error('[Fleet] Auto Approval email error:', err.message));
         } else {
-            // Gui email thong bao cho Admin (cho duyet)
-            notifyAdminNewBooking({
+            // Kích hoạt gửi Teams approval cho Giám sát
+            sendSupervisorApprovalToQueue({
                 ...newBooking,
+                Id: newBooking.Id,
+                BookingCode: newBooking.BookingCode,
                 RequesterName:  requesterName,
                 RequesterEmail: requesterEmail,
                 RequesterDept:  requesterDept,
@@ -373,11 +380,96 @@ router.post('/bookings', async (req, res, next) => {
                 Purpose:        purpose,
                 PassengerCount: passengerCount,
                 Priority:       priority,
-                Status:         'Chờ duyệt',
-            }, pool).catch(err => console.error('[Fleet] Email error:', err.message));
+                Notes:          notes,
+                Attendees:      attendees,
+                AttendeesEmail: attendeesEmail
+            }, pool).catch(err => console.error('[Fleet Teams] Queue error:', err.message));
         }
 
         res.status(201).json({ success: true, data: newBooking });
+    } catch (err) { next(err); }
+});
+
+/**
+ * PUT /api/fleet/bookings/:id
+ * Chỉnh sửa booking
+ * Chỉ cho phép khi trạng thái thuộc: Chờ phản hồi, Giám sát từ chối, Team Admin từ chối, Team Admin đã duyệt, Đã duyệt.
+ */
+router.put('/bookings/:id', async (req, res, next) => {
+    try {
+        const { id } = req.params;
+        const {
+            pickupLocation, destination, stops, departureTime, returnTime,
+            purpose, passengerCount, priority, notes, attendees, attendeesEmail, vehicleType
+        } = req.body;
+
+        if (isNaN(Number(id))) return res.status(400).json({ success: false, error: 'ID không hợp lệ' });
+
+        const pool = await getCsrPool();
+
+        // 1. Lấy chi tiết booking hiện tại để kiểm tra quyền và trạng thái
+        const detailRes = await pool.request()
+            .input('Id', sql.Int, Number(id))
+            .execute('usp_Fleet_Booking_GetDetail');
+        const booking = detailRes.recordset[0];
+        if (!booking) return res.status(404).json({ success: false, error: 'Không tìm thấy booking' });
+
+        // Quyền: chỉ người tạo hoặc admin mới được sửa
+        if (!isApprover(req.user.role) && booking.RequesterMNV !== req.user.mnv) {
+            return res.status(403).json({ success: false, error: 'Bạn không có quyền sửa booking này' });
+        }
+
+        // Trạng thái: chỉ các trạng thái cho phép
+        const ALLOWED_EDIT_STATUSES = [
+            'Chờ phản hồi', 'Giám sát từ chối', 'Team Admin từ chối', 'Team Admin đã duyệt', 'Đã duyệt', 'Chờ duyệt'
+        ];
+        if (!ALLOWED_EDIT_STATUSES.includes(booking.Status)) {
+            return res.status(400).json({ success: false, error: `Không thể chỉnh sửa đơn ở trạng thái hiện tại: ${booking.Status}` });
+        }
+
+        // 2. Cập nhật booking
+        await pool.request()
+            .input('Id',              sql.Int,             Number(id))
+            .input('PickupLocation',  sql.NVarChar(500),   pickupLocation.trim())
+            .input('Destination',     sql.NVarChar(500),   destination.trim())
+            .input('Stops',           sql.NVarChar(sql.MAX), stops ? JSON.stringify(stops) : null)
+            .input('DepartureTime',   sql.DateTime,        new Date(departureTime))
+            .input('ReturnTime',      sql.DateTime,        returnTime ? new Date(returnTime) : null)
+            .input('Purpose',         sql.NVarChar(1000),  purpose.trim())
+            .input('PassengerCount',  sql.Int,             Number(passengerCount))
+            .input('Priority',        sql.NVarChar(20),    priority)
+            .input('Notes',           sql.NVarChar(1000),  notes || null)
+            .input('Attendees',       sql.NVarChar(sql.MAX), attendees || null)
+            .input('AttendeesEmail',  sql.NVarChar(sql.MAX), attendeesEmail || null)
+            .input('VehicleType',     sql.NVarChar(100),   vehicleType || 'Xe công ty')
+            .execute('usp_Fleet_Booking_Update');
+
+        // 3. Trạng thái sau update được reset về 'Chờ phản hồi' trong SP, ta gửi lại email / queue Teams cho giám sát
+        const updatedBookingRes = await pool.request()
+            .input('Id', sql.Int, Number(id))
+            .execute('usp_Fleet_Booking_GetDetail');
+        const updatedBooking = updatedBookingRes.recordset[0];
+
+        sendSupervisorApprovalToQueue({
+            ...updatedBooking,
+            Id: updatedBooking.Id,
+            BookingCode: updatedBooking.BookingCode,
+            RequesterName:  updatedBooking.RequesterName,
+            RequesterEmail: updatedBooking.RequesterEmail,
+            RequesterDept:  updatedBooking.RequesterDept,
+            PickupLocation: updatedBooking.PickupLocation,
+            Destination:    updatedBooking.Destination,
+            DepartureTime:  updatedBooking.DepartureTime,
+            ReturnTime:     updatedBooking.ReturnTime,
+            Purpose:        updatedBooking.Purpose,
+            PassengerCount: updatedBooking.PassengerCount,
+            Priority:       updatedBooking.Priority,
+            Notes:          updatedBooking.Notes,
+            Attendees:      updatedBooking.Attendees,
+            AttendeesEmail: updatedBooking.AttendeesEmail
+        }, pool).catch(err => console.error('[Fleet Teams] Queue error after edit:', err.message));
+
+        res.json({ success: true, message: 'Cập nhật và gửi lại yêu cầu duyệt thành công', data: updatedBooking });
     } catch (err) { next(err); }
 });
 
@@ -424,21 +516,30 @@ router.put('/bookings/:id/status', async (req, res, next) => {
         if (isNaN(Number(id))) return res.status(400).json({ success: false, error: 'ID không hợp lệ' });
         if (!newStatus)        return res.status(400).json({ success: false, error: 'Trạng thái mới không được để trống' });
 
-        const VALID_STATUSES = ['Đã duyệt', 'Từ chối', 'Đã hủy', 'Hoàn thành'];
+        const VALID_STATUSES = [
+            'Đã duyệt', 'Từ chối', 'Đã hủy', 'Hoàn thành',
+            'Giám sát đã duyệt', 'Giám sát từ chối',
+            'Team Admin đã duyệt', 'Team Admin từ chối'
+        ];
         if (!VALID_STATUSES.includes(newStatus)) {
             return res.status(400).json({ success: false, error: `Trạng thái không hợp lệ: ${newStatus}` });
         }
 
         // Phan quyen:
-        // - "Đã duyệt", "Từ chối", "Hoàn thành" -> phai la approver
+        // - "Giám sát đã duyệt", "Giám sát từ chối", "Team Admin đã duyệt", "Team Admin từ chối", "Hoàn thành" -> phai la approver
         // - "Đã hủy" -> approver hoac chinh nguoi dat
-        const requiresApprover = ['Đã duyệt', 'Từ chối', 'Hoàn thành'].includes(newStatus);
+        const requiresApprover = [
+            'Đã duyệt', 'Từ chối', 'Hoàn thành',
+            'Giám sát đã duyệt', 'Giám sát từ chối',
+            'Team Admin đã duyệt', 'Team Admin từ chối'
+        ].includes(newStatus);
         if (requiresApprover && !isApprover(req.user.role)) {
             return res.status(403).json({ success: false, error: 'Bạn không có quyền thực hiện hành động này' });
         }
 
         // Neu duyet: bat buoc phai chon xe
-        if (newStatus === 'Đã duyệt' && !vehicleId) {
+        const isApproving = newStatus === 'Đã duyệt' || newStatus === 'Team Admin đã duyệt';
+        if (isApproving && !vehicleId) {
             return res.status(400).json({ success: false, error: 'Vui lòng chọn xe để phân công khi duyệt' });
         }
 
@@ -457,10 +558,16 @@ router.put('/bookings/:id/status', async (req, res, next) => {
         const updatedBooking = result.recordset[0];
 
         // Gui email thong bao (non-blocking)
-        if (newStatus === 'Đã duyệt') {
+        if (newStatus === 'Team Admin đã duyệt' && updatedBooking) {
+            const { buildAllocationEmailHtml, sendFleetMail } = require('../utils/fleetTeamsApproval');
+            const subject = `Điều phối phương tiện đi công tác cho ${updatedBooking.RequesterName}`;
+            const emailHtml = buildAllocationEmailHtml(updatedBooking);
+            sendFleetMail([updatedBooking.RequesterEmail.trim()], [], subject, emailHtml)
+                .catch(err => console.error('[Fleet] Dispatch allocation email error:', err.message));
+        } else if (newStatus === 'Đã duyệt' && updatedBooking) {
             notifyRequesterApproved({ ...updatedBooking, ApprovedBy: req.user.fullName || req.user.mnv }, pool)
                 .catch(err => console.error('[Fleet] Approval email error:', err.message));
-        } else if (newStatus === 'Từ chối') {
+        } else if ((newStatus === 'Từ chối' || newStatus === 'Giám sát từ chối' || newStatus === 'Team Admin từ chối') && updatedBooking) {
             notifyRequesterRejected(updatedBooking)
                 .catch(err => console.error('[Fleet] Rejection email error:', err.message));
         }
