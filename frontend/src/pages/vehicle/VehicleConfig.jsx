@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import {
   getVehicleTypes,
@@ -6,19 +6,79 @@ import {
   getVehicles,
   saveVehicle,
   getDrivers,
-  saveDriver
+  saveDriver,
+  importVehicles,
+  importDrivers
 } from '../../services/fleetApi';
 import { Checkbox } from '../../components/ui/checkbox';
 import { Field, FieldGroup, FieldLabel } from '../../components/ui/field';
+import ExcelImportModal from '../../components/ui/ExcelImportModal';
+
+const DRIVER_COLUMNS = [
+  { key: 'fullName',      label: 'Họ và tên',     required: true,  example: 'Nguyễn Văn A' },
+  { key: 'phone',         label: 'Số điện thoại', required: false, example: '0987654321' },
+  { key: 'licenseNumber', label: 'Số bằng lái',   required: false, example: '123456789012' },
+  { key: 'licenseClass',  label: 'Hạng bằng',     required: false, example: 'B2' },
+  { key: 'status',        label: 'Trạng thái',    required: false, example: 'Sẵn sàng', validationList: ['Sẵn sàng', 'Nghỉ', 'Ngưng hoạt động'] },
+  { key: 'notes',         label: 'Ghi chú',       required: false, example: 'Lái xe cẩn thận' },
+  { key: 'isActive',      label: 'Kích hoạt',     required: false, example: 'Hoạt động', validationList: ['Hoạt động', 'Ngưng hoạt động'] },
+];
+
+
 
 export default function VehicleConfig() {
   const [activeTab, setActiveTab] = useState('vehicles'); // vehicles, drivers, types
   const [loading, setLoading] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   // Lists
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [types, setTypes] = useState([]);
+
+  const vehicleColumns = useMemo(() => {
+    const typeNames = types.map(t => t.TypeName).filter(Boolean);
+    return [
+      { key: 'plateNumber', label: 'Biển số xe',   required: true,  example: '51F-12345' },
+      { key: 'brand',       label: 'Hãng xe',      required: true,  example: 'Toyota' },
+      { key: 'model',       label: 'Dòng xe',      required: false, example: 'Fortuner' },
+      { key: 'typeName',    label: 'Loại xe',      required: false, example: typeNames[0] || 'SUV 7 chỗ', validationList: typeNames.length > 0 ? typeNames : undefined },
+      { key: 'seats',       label: 'Số chỗ',       required: false, example: '7' },
+      { key: 'color',       label: 'Màu sắc',      required: false, example: 'Đen' },
+      { key: 'fuelType',    label: 'Nhiên liệu',   required: false, example: 'Dầu', validationList: ['Xăng', 'Dầu', 'Điện'] },
+      { key: 'status',      label: 'Trạng thái xe', required: false, example: 'Sẵn sàng', validationList: ['Sẵn sàng', 'Bảo dưỡng', 'Ngưng hoạt động'] },
+      { key: 'notes',       label: 'Ghi chú',      required: false, example: 'Xe mới mua' },
+      { key: 'isActive',    label: 'Kích hoạt',    required: false, example: 'Hoạt động', validationList: ['Hoạt động', 'Ngưng hoạt động'] },
+    ];
+  }, [types]);
+
+
+  const handleImportData = async (rows) => {
+    try {
+      let res;
+      if (activeTab === 'vehicles') {
+        res = await importVehicles(rows);
+      } else if (activeTab === 'drivers') {
+        res = await importDrivers(rows);
+      } else {
+        return;
+      }
+
+      if (res.success) {
+        toast.success(res.message);
+        if (res.errors?.length > 0) {
+          res.errors.forEach(e => toast.error(e, { duration: 6000 }));
+        }
+        setShowImport(false);
+        loadData();
+      } else {
+        toast.error(res.error || 'Lỗi khi import');
+      }
+    } catch (err) {
+      toast.error('Lỗi kết nối: ' + err.message);
+    }
+  };
+
 
   // Edit states
   const [editingId, setEditingId] = useState(null);
@@ -256,19 +316,30 @@ export default function VehicleConfig() {
               {activeTab === 'drivers' && 'Danh sách tài xế'}
               {activeTab === 'types' && 'Danh mục các loại xe'}
             </h2>
-            {editingId === null && (
-              <button
-                className="btn btn-primary btn-sm flex items-center gap-1"
-                onClick={() => {
-                  if (activeTab === 'vehicles') handleAddNewVehicle();
-                  if (activeTab === 'drivers') handleAddNewDriver();
-                  if (activeTab === 'types') handleAddNewType();
-                }}
-              >
-                <span className="material-symbols-outlined text-[16px]">add</span>
-                Thêm mới
-              </button>
-            )}
+            <div className="flex gap-2">
+              {editingId === null && (activeTab === 'vehicles' || activeTab === 'drivers') && (
+                <button
+                  className="btn btn-outline btn-sm flex items-center gap-1"
+                  onClick={() => setShowImport(true)}
+                >
+                  <span className="material-symbols-outlined text-[16px]">upload_file</span>
+                  Import Excel
+                </button>
+              )}
+              {editingId === null && (
+                <button
+                  className="btn btn-primary btn-sm flex items-center gap-1"
+                  onClick={() => {
+                    if (activeTab === 'vehicles') handleAddNewVehicle();
+                    if (activeTab === 'drivers') handleAddNewDriver();
+                    if (activeTab === 'types') handleAddNewType();
+                  }}
+                >
+                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  Thêm mới
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -636,6 +707,15 @@ export default function VehicleConfig() {
           )}
         </div>
       </div>
+      {showImport && (
+        <ExcelImportModal
+          title={activeTab === 'vehicles' ? 'Import danh sách xe' : 'Import danh sách tài xế'}
+          templateName={activeTab === 'vehicles' ? 'template_danh_sach_xe.xlsx' : 'template_danh_sach_tai_xe.xlsx'}
+          columns={activeTab === 'vehicles' ? vehicleColumns : DRIVER_COLUMNS}
+          onImport={handleImportData}
+          onClose={() => setShowImport(false)}
+        />
+      )}
     </div>
   );
 }

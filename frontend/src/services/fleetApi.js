@@ -8,10 +8,12 @@ export const saveVehicleType = (data) => api.post('/fleet/vehicle-types', data);
 // ── Vehicles ──
 export const getVehicles = (params) => api.get('/fleet/vehicles', { params });
 export const saveVehicle = (data) => api.post('/fleet/vehicles', data);
+export const importVehicles = (rows) => api.post('/fleet/vehicles/batch', { rows });
 
 // ── Drivers ──
 export const getDrivers = (params) => api.get('/fleet/drivers', { params });
 export const saveDriver = (data) => api.post('/fleet/drivers', data);
+export const importDrivers = (rows) => api.post('/fleet/drivers/batch', { rows });
 
 // ── Bookings ──
 export const getBookings = (params) => api.get('/fleet/bookings', { params });

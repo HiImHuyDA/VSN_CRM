@@ -109,6 +109,56 @@ router.post('/vehicles', authorizeRoles('Admin', 'PRD'), async (req, res, next) 
     } catch (err) { next(err); }
 });
 
+/**
+ * POST /api/fleet/vehicles/batch
+ * Batch import vehicles from Excel (chi Admin / PRD)
+ */
+router.post('/vehicles/batch', authorizeRoles('Admin', 'PRD'), async (req, res, next) => {
+    try {
+        const { rows } = req.body;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ success: false, error: 'Không có dữ liệu' });
+        }
+
+        const pool = await getCsrPool();
+        let inserted = 0;
+        const errors = [];
+
+        for (const row of rows) {
+            const plateNumber = String(row.plateNumber || '').trim().toUpperCase();
+            const brand = String(row.brand || '').trim();
+            if (!plateNumber || !brand) continue;
+
+            try {
+                // Chuẩn hoá IsActive
+                const activeRaw = String(row.isActive || '').trim();
+                let isActiveVal = 1;
+                if (activeRaw === 'Ngưng hoạt động' || activeRaw === 'Dừng' || activeRaw === '0' || activeRaw === 'false' || activeRaw === 'Khóa') {
+                    isActiveVal = 0;
+                }
+
+                await pool.request()
+                    .input('PlateNumber', sql.NVarChar(20),   plateNumber)
+                    .input('Brand',       sql.NVarChar(100),  brand)
+                    .input('Model',       sql.NVarChar(100),  row.model || null)
+                    .input('TypeName',    sql.NVarChar(100),  row.typeName || null)
+                    .input('Seats',       sql.Int,            Number(row.seats) || 4)
+                    .input('Color',       sql.NVarChar(50),   row.color || null)
+                    .input('FuelType',    sql.NVarChar(50),   row.fuelType || 'Xăng')
+                    .input('Status',      sql.NVarChar(50),   row.status || 'Sẵn sàng')
+                    .input('Notes',       sql.NVarChar(1000), row.notes || null)
+                    .input('IsActive',    sql.Bit,            isActiveVal)
+                    .execute('usp_Fleet_Vehicle_UpsertByPlate');
+                inserted++;
+            } catch (e) {
+                errors.push(`Xe "${plateNumber}": ${e.message}`);
+            }
+        }
+
+        res.json({ success: true, message: `Đã xử lý ${inserted}/${rows.length} xe`, errors });
+    } catch (err) { next(err); }
+});
+
 // ── DRIVERS ──────────────────────────────────────────────────────
 
 /**
@@ -152,6 +202,52 @@ router.post('/drivers', authorizeRoles('Admin', 'PRD'), async (req, res, next) =
             .execute('usp_Fleet_Driver_Save');
 
         res.json({ success: true, data: result.recordset[0] });
+    } catch (err) { next(err); }
+});
+
+/**
+ * POST /api/fleet/drivers/batch
+ * Batch import drivers from Excel (chi Admin / PRD)
+ */
+router.post('/drivers/batch', authorizeRoles('Admin', 'PRD'), async (req, res, next) => {
+    try {
+        const { rows } = req.body;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ success: false, error: 'Không có dữ liệu' });
+        }
+
+        const pool = await getCsrPool();
+        let inserted = 0;
+        const errors = [];
+
+        for (const row of rows) {
+            const fullName = String(row.fullName || '').trim();
+            if (!fullName) continue;
+
+            try {
+                // Chuẩn hoá IsActive
+                const activeRaw = String(row.isActive || '').trim();
+                let isActiveVal = 1;
+                if (activeRaw === 'Ngưng hoạt động' || activeRaw === 'Dừng' || activeRaw === '0' || activeRaw === 'false' || activeRaw === 'Nghỉ') {
+                    isActiveVal = 0;
+                }
+
+                await pool.request()
+                    .input('FullName',      sql.NVarChar(200),  fullName)
+                    .input('Phone',         sql.NVarChar(20),   row.phone ? String(row.phone).trim() : null)
+                    .input('LicenseNumber', sql.NVarChar(50),   row.licenseNumber ? String(row.licenseNumber).trim() : null)
+                    .input('LicenseClass',  sql.NVarChar(10),   row.licenseClass || null)
+                    .input('Status',        sql.NVarChar(50),   row.status || 'Sẵn sàng')
+                    .input('Notes',         sql.NVarChar(1000), row.notes || null)
+                    .input('IsActive',      sql.Bit,            isActiveVal)
+                    .execute('usp_Fleet_Driver_Upsert');
+                inserted++;
+            } catch (e) {
+                errors.push(`Tài xế "${fullName}": ${e.message}`);
+            }
+        }
+
+        res.json({ success: true, message: `Đã xử lý ${inserted}/${rows.length} tài xế`, errors });
     } catch (err) { next(err); }
 });
 

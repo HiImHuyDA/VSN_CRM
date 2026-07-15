@@ -409,7 +409,7 @@ function CropModal({ imageElement, onClose, onCropComplete }) {
 
       try {
         const formData = new FormData();
-        formData.append('file', blob, 'cropped-image.png');
+        formData.append('file', blob, 'cropped-image.jpg');
 
         const apiHost = import.meta.env.VITE_API_URL || '/api';
         let baseUrl = apiHost.endsWith('/api') ? apiHost.slice(0, -4) : apiHost;
@@ -438,7 +438,7 @@ function CropModal({ imageElement, onClose, onCropComplete }) {
       } finally {
         setCropping(false);
       }
-    }, 'image/png');
+    }, 'image/jpeg', 0.85);
   };
 
   return (
@@ -759,6 +759,58 @@ function SubjectEditor({ value, onChange }) {
   );
 }
 
+const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality = 0.7) => {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) {
+      resolve(file);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width > height) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              resolve(compressedFile.size < file.size ? compressedFile : file);
+            } else {
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
 // ─── Rich Text Editor ─────────────────────────────────────────────────────────
 function RichTextEditor({ value, onChange }) {
   const editorRef = useRef(null);
@@ -1002,8 +1054,11 @@ function RichTextEditor({ value, onChange }) {
     for (let i = 0; i < items.length; i++) {
       if (items[i].type.startsWith('image/')) {
         e.preventDefault();
-        const file = items[i].getAsFile();
+        let file = items[i].getAsFile();
         if (!file) continue;
+
+        // Compress image client-side to prevent "413 Request Entity Too Large"
+        file = await compressImage(file);
 
         saveRange();
 
@@ -1051,8 +1106,12 @@ function RichTextEditor({ value, onChange }) {
   };
 
   const handleFileUpload = async (e, type) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     if (!file) return;
+
+    if (type === 'image') {
+      file = await compressImage(file);
+    }
 
     const tempId = (type === 'image' ? 'img-' : 'file-') + Date.now();
     let blobUrl = '';
