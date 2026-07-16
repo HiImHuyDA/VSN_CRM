@@ -727,7 +727,15 @@ router.put('/bookings/:id/status', async (req, res, next) => {
             const { buildAllocationEmailHtml, sendFleetMail } = require('../utils/fleetTeamsApproval');
             const subject = `Điều phối phương tiện đi công tác cho ${updatedBooking.RequesterName}`;
             const emailHtml = buildAllocationEmailHtml(updatedBooking);
-            sendFleetMail([updatedBooking.RequesterEmail.trim()], [], subject, emailHtml)
+            // Gửi cho requester + toàn bộ attendees có email (đồng nhất với luồng duyệt qua Teams)
+            const toEmailSet = new Set();
+            if (updatedBooking.RequesterEmail?.trim()) toEmailSet.add(updatedBooking.RequesterEmail.trim());
+            if (updatedBooking.AttendeesEmail) {
+                updatedBooking.AttendeesEmail.split(/[;,]/)
+                    .map(e => e.trim()).filter(Boolean)
+                    .forEach(e => toEmailSet.add(e));
+            }
+            sendFleetMail([...toEmailSet], [], subject, emailHtml)
                 .catch(err => console.error('[Fleet] Dispatch allocation email error:', err.message));
         } else if (newStatus === 'Đã duyệt' && updatedBooking) {
             notifyRequesterApproved({ ...updatedBooking, ApprovedBy: req.user.fullName || req.user.mnv }, pool)
