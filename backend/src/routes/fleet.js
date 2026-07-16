@@ -6,6 +6,7 @@ const ExcelJS = require('exceljs');
 const axios = require('axios');
 const authenticateToken = require('../middleware/auth');
 const authorizeRoles = require('../middleware/authorize');
+const authorizeMenu = require('../middleware/authorizeMenu');
 const { getCsrPool, sql } = require('../config/database');
 const {
     notifyAdminNewBooking,
@@ -45,7 +46,7 @@ router.get('/vehicle-types', async (req, res, next) => {
  * POST /api/fleet/vehicle-types
  * Them / cap nhat loai xe (chi Admin)
  */
-router.post('/vehicle-types', authorizeRoles('Admin'), async (req, res, next) => {
+router.post('/vehicle-types', authorizeMenu('vehicle.config'), async (req, res, next) => {
     try {
         const { id = 0, typeName, description, isActive = true } = req.body;
         if (!typeName?.trim()) {
@@ -84,7 +85,7 @@ router.get('/vehicles', async (req, res, next) => {
  * POST /api/fleet/vehicles
  * Them / cap nhat xe (chi Admin)
  */
-router.post('/vehicles', authorizeRoles('Admin', 'PRD'), async (req, res, next) => {
+router.post('/vehicles', authorizeMenu('vehicle.config'), async (req, res, next) => {
     try {
         const {
             id = 0, plateNumber, brand, model, typeId,
@@ -184,7 +185,7 @@ router.get('/drivers', async (req, res, next) => {
  * POST /api/fleet/drivers
  * Them / cap nhat tai xe (chi Admin / PRD)
  */
-router.post('/drivers', authorizeRoles('Admin', 'PRD'), async (req, res, next) => {
+router.post('/drivers', authorizeMenu('vehicle.config'), async (req, res, next) => {
     try {
         const {
             id = 0, fullName, phone, licenseNumber, licenseClass,
@@ -213,7 +214,7 @@ router.post('/drivers', authorizeRoles('Admin', 'PRD'), async (req, res, next) =
  * POST /api/fleet/drivers/batch
  * Batch import drivers from Excel (chi Admin / PRD)
  */
-router.post('/drivers/batch', authorizeRoles('Admin', 'PRD'), async (req, res, next) => {
+router.post('/drivers/batch', authorizeMenu('vehicle.config'), async (req, res, next) => {
     try {
         const { rows } = req.body;
         if (!Array.isArray(rows) || rows.length === 0) {
@@ -287,6 +288,30 @@ router.get('/bookings', async (req, res, next) => {
         const totalCount = result.recordsets[0]?.[0]?.TotalCount || 0;
         const items      = result.recordsets[1] || [];
         res.json({ success: true, data: items, totalCount, page: Number(page), pageSize: Number(pageSize) });
+    } catch (err) { next(err); }
+});
+
+/**
+ * GET /api/fleet/bookings/calendar
+ * Lay danh sach dat xe / lich trinh cho giao dien calendar
+ */
+router.get('/bookings/calendar', async (req, res, next) => {
+    try {
+        const { dateFrom, dateTo, vehicleId, driverId, status } = req.query;
+        if (!dateFrom || !dateTo) {
+            return res.status(400).json({ success: false, error: 'Thiếu tham số dateFrom hoặc dateTo' });
+        }
+
+        const pool = await getCsrPool();
+        const result = await pool.request()
+            .input('DateFrom',   sql.Date,          new Date(dateFrom))
+            .input('DateTo',     sql.Date,          new Date(dateTo))
+            .input('VehicleId',  sql.Int,           vehicleId ? Number(vehicleId) : null)
+            .input('DriverId',   sql.Int,           driverId ? Number(driverId) : null)
+            .input('Status',     sql.NVarChar(50),  status || null)
+            .execute('usp_Fleet_Booking_GetCalendar');
+
+        res.json({ success: true, data: result.recordset || [] });
     } catch (err) { next(err); }
 });
 
@@ -414,10 +439,33 @@ router.put('/bookings/:id', async (req, res, next) => {
         const booking = detailRes.recordset[0];
         if (!booking) return res.status(404).json({ success: false, error: 'Không tìm thấy booking' });
 
-        // Quyền: chỉ người tạo hoặc admin mới được sửa
-        if (!isApprover(req.user.role) && booking.RequesterMNV !== req.user.mnv) {
+        // Fetch current user's email
+        const userEmpRes = await pool.request()
+            .input('MNV', sql.NVarChar(50), req.user.mnv)
+            .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+        const currentUserEmail = userEmpRes.recordset[0]?.Email;
+
+        // Check if the current user is the manager of the booking creator
+        let isCreatorManager = false;
+        if (currentUserEmail) {
+            const managerCheckRes = await pool.request()
+                .input('CreatorMNV', sql.NVarChar(50), booking.RequesterMNV)
+                .input('ManagerEmail', sql.NVarChar(200), currentUserEmail)
+                .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+            if (managerCheckRes.recordset.length > 0) {
+                isCreatorManager = true;
+            }
+        }
+
+        const canEdit = req.user.role === 'Admin' 
+            || req.user.role === 'TeamAdmin' 
+            || booking.RequesterMNV === req.user.mnv
+            || isCreatorManager;
+
+        if (!canEdit) {
             return res.status(403).json({ success: false, error: 'Bạn không có quyền sửa booking này' });
         }
+
 
         // Trạng thái: chỉ các trạng thái cho phép
         const ALLOWED_EDIT_STATUSES = [
@@ -490,12 +538,97 @@ router.get('/bookings/:id', async (req, res, next) => {
         const booking = result.recordset[0];
         if (!booking) return res.status(404).json({ success: false, error: 'Không tìm thấy booking' });
 
-        // User thuong chi xem duoc don cua minh
-        if (!isApprover(req.user.role) && booking.RequesterMNV !== req.user.mnv) {
-            return res.status(403).json({ success: false, error: 'Bạn không có quyền xem booking này' });
+        // User thuong chi xem duoc don cua minh hoac cua nhan vien minh quan ly
+        if (!['Admin', 'PRD', 'BOD', 'TeamAdmin'].includes(req.user.role)) {
+            let isAllowed = booking.RequesterMNV === req.user.mnv;
+            if (!isAllowed) {
+                // Check if manager of creator
+                const empRes = await pool.request()
+                    .input('MNV', sql.NVarChar(50), req.user.mnv)
+                    .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+                const actorEmail = empRes.recordset[0]?.Email;
+                if (actorEmail) {
+                    const managerCheck = await pool.request()
+                        .input('CreatorMNV', sql.NVarChar(50), booking.RequesterMNV)
+                        .input('ManagerEmail', sql.NVarChar(200), actorEmail)
+                        .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+                    if (managerCheck.recordset.length > 0) {
+                        isAllowed = true;
+                    }
+                }
+            }
+            if (!isAllowed) {
+                return res.status(403).json({ success: false, error: 'Bạn không có quyền xem booking này' });
+            }
         }
 
-        res.json({ success: true, data: booking });
+        // Calculate actions and approval permissions
+        const userEmpRes = await pool.request()
+            .input('MNV', sql.NVarChar(50), req.user.mnv)
+            .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+        const currentUserEmail = userEmpRes.recordset[0]?.Email;
+
+        let isCreatorManager = false;
+        if (currentUserEmail) {
+            const managerCheckRes = await pool.request()
+                .input('CreatorMNV', sql.NVarChar(50), booking.RequesterMNV)
+                .input('ManagerEmail', sql.NVarChar(200), currentUserEmail)
+                .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+            if (managerCheckRes.recordset.length > 0) {
+                isCreatorManager = true;
+            }
+        }
+
+        const isCreator = booking.RequesterMNV === req.user.mnv;
+        const actorRole = req.user.role;
+
+        let canEdit = false;
+        let canCancel = false;
+
+        if (actorRole === 'Admin' || actorRole === 'TeamAdmin') {
+            canEdit = true;
+            canCancel = true;
+        } else if (isCreator || isCreatorManager) {
+            canEdit = true;
+            canCancel = true;
+        }
+
+        // Apply status limitations for edit
+        const ALLOWED_EDIT_STATUSES = [
+            'Chờ phản hồi', 'Giám sát từ chối', 'Team Admin từ chối', 'Team Admin đã duyệt', 'Đã duyệt', 'Chờ duyệt'
+        ];
+        if (!ALLOWED_EDIT_STATUSES.includes(booking.Status)) {
+            canEdit = false;
+        }
+        // Apply status limitations for cancel
+        if (['Đã hủy', 'Hoàn thành'].includes(booking.Status)) {
+            canCancel = false;
+        }
+
+        // Calculate approval permissions
+        let canApproveSupervisor = false; // Manager approval step
+        let canApproveTeamAdmin = false;   // Team Admin approval step
+
+        if (actorRole === 'Admin') {
+            canApproveSupervisor = booking.Status === 'Chờ phản hồi';
+            canApproveTeamAdmin = booking.Status === 'Giám sát đã duyệt';
+        } else {
+            if (isCreatorManager && booking.Status === 'Chờ phản hồi') {
+                canApproveSupervisor = true;
+            }
+            if (actorRole === 'TeamAdmin' && booking.Status === 'Giám sát đã duyệt') {
+                canApproveTeamAdmin = true;
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                ...booking,
+                permissions: { canEdit, canCancel, canApproveSupervisor, canApproveTeamAdmin }
+            }
+        });
+
     } catch (err) { next(err); }
 });
 
@@ -525,17 +658,50 @@ router.put('/bookings/:id/status', async (req, res, next) => {
             return res.status(400).json({ success: false, error: `Trạng thái không hợp lệ: ${newStatus}` });
         }
 
-        // Phan quyen:
-        // - "Giám sát đã duyệt", "Giám sát từ chối", "Team Admin đã duyệt", "Team Admin từ chối", "Hoàn thành" -> phai la approver
-        // - "Đã hủy" -> approver hoac chinh nguoi dat
-        const requiresApprover = [
-            'Đã duyệt', 'Từ chối', 'Hoàn thành',
-            'Giám sát đã duyệt', 'Giám sát từ chối',
-            'Team Admin đã duyệt', 'Team Admin từ chối'
-        ].includes(newStatus);
-        if (requiresApprover && !isApprover(req.user.role)) {
-            return res.status(403).json({ success: false, error: 'Bạn không có quyền thực hiện hành động này' });
+        const pool = await getCsrPool();
+        
+        // 1. Fetch current booking to check role restrictions
+        const detailRes = await pool.request()
+            .input('Id', sql.Int, Number(id))
+            .execute('usp_Fleet_Booking_GetDetail');
+        const booking = detailRes.recordset[0];
+        if (!booking) return res.status(404).json({ success: false, error: 'Không tìm thấy booking' });
+
+        // Fetch current user's email
+        const userEmpRes = await pool.request()
+            .input('MNV', sql.NVarChar(50), req.user.mnv)
+            .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+        const currentUserEmail = userEmpRes.recordset[0]?.Email;
+
+        // Check if the current user is the manager of the booking creator
+        let isCreatorManager = false;
+        if (currentUserEmail) {
+            const managerCheckRes = await pool.request()
+                .input('CreatorMNV', sql.NVarChar(50), booking.RequesterMNV)
+                .input('ManagerEmail', sql.NVarChar(200), currentUserEmail)
+                .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+            if (managerCheckRes.recordset.length > 0) {
+                isCreatorManager = true;
+            }
         }
+
+        let isAuthorized = false;
+        if (req.user.role === 'Admin') {
+            isAuthorized = true;
+        } else if (newStatus === 'Đã hủy') {
+            isAuthorized = booking.RequesterMNV === req.user.mnv 
+                || req.user.role === 'TeamAdmin' 
+                || isCreatorManager;
+        } else if (newStatus === 'Giám sát đã duyệt' || newStatus === 'Giám sát từ chối') {
+            isAuthorized = isCreatorManager;
+        } else if (newStatus === 'Team Admin đã duyệt' || newStatus === 'Team Admin từ chối' || newStatus === 'Hoàn thành') {
+            isAuthorized = req.user.role === 'TeamAdmin';
+        }
+
+        if (!isAuthorized) {
+            return res.status(403).json({ success: false, error: 'Bạn không có quyền thực hiện hành động này ở trạng thái tương ứng' });
+        }
+
 
         // Neu duyet: bat buoc phai chon xe
         const isApproving = newStatus === 'Đã duyệt' || newStatus === 'Team Admin đã duyệt';
@@ -543,7 +709,6 @@ router.put('/bookings/:id/status', async (req, res, next) => {
             return res.status(400).json({ success: false, error: 'Vui lòng chọn xe để phân công khi duyệt' });
         }
 
-        const pool = await getCsrPool();
         const result = await pool.request()
             .input('Id',              sql.Int,            Number(id))
             .input('NewStatus',       sql.NVarChar(50),   newStatus)

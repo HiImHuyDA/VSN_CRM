@@ -8,7 +8,7 @@ const USER_COLUMNS = [
   { key: 'mnv', label: 'Mã nhân viên (MNV)', required: true, example: 'VSN001' },
   { key: 'fullName', label: 'Họ và tên', required: true, example: 'Nguyễn Văn A' },
   { key: 'email', label: 'Email', required: false, example: 'nguyen.a@vsn.com.vn' },
-  { key: 'role', label: 'Vai trò (Admin/BOD/PRD/User)', required: false, example: 'User', validationList: ['Admin', 'BOD', 'PRD', 'User'] },
+  { key: 'role', label: 'Vai trò (Admin/BOD/PRD/User/TeamAdmin)', required: false, example: 'User', validationList: ['Admin', 'BOD', 'PRD', 'User', 'TeamAdmin'] },
   { key: 'department', label: 'Phòng ban', required: false, example: 'Phòng Nhân sự' },
   { key: 'password', label: 'Mật khẩu', required: false, example: 'Aa@123456' },
   { key: 'isActive', label: 'Trạng thái', required: false, example: 'Hoạt động', validationList: ['Hoạt động', 'Ngưng hoạt động'] },
@@ -367,15 +367,16 @@ export default function UserConfig() {
                         onChange={(e) => handleUpdateUser(user.UserId, 'Role', e.target.value, user)}
                         style={{
                           fontWeight: '600',
-                          color: user.Role === 'Admin' ? '#FF4D4F' : user.Role === 'BOD' ? '#1677FF' : user.Role === 'PRD' ? '#FA8C16' : '#595959',
-                          backgroundColor: user.Role === 'Admin' ? '#FFF1F0' : user.Role === 'BOD' ? '#E6F7FF' : user.Role === 'PRD' ? '#FFFBE6' : '#F5F5F5',
-                          borderColor: user.Role === 'Admin' ? '#FFA39E' : user.Role === 'BOD' ? '#91CAFF' : user.Role === 'PRD' ? '#FFE58F' : '#D9D9D9'
+                          color: user.Role === 'Admin' ? '#FF4D4F' : user.Role === 'BOD' ? '#1677FF' : user.Role === 'PRD' ? '#FA8C16' : user.Role === 'TeamAdmin' ? '#722ED1' : '#595959',
+                          backgroundColor: user.Role === 'Admin' ? '#FFF1F0' : user.Role === 'BOD' ? '#E6F7FF' : user.Role === 'PRD' ? '#FFFBE6' : user.Role === 'TeamAdmin' ? '#F9F0FF' : '#F5F5F5',
+                          borderColor: user.Role === 'Admin' ? '#FFA39E' : user.Role === 'BOD' ? '#91CAFF' : user.Role === 'PRD' ? '#FFE58F' : user.Role === 'TeamAdmin' ? '#D3ADF7' : '#D9D9D9'
                         }}
                       >
                         <option value="Admin">Admin</option>
                         <option value="BOD">BOD</option>
                         <option value="PRD">PRD</option>
                         <option value="User">User</option>
+                        <option value="TeamAdmin">TeamAdmin</option>
                       </select>
                     </td>
                     <td>{user.FullName}</td>
@@ -456,6 +457,7 @@ export default function UserConfig() {
                     <option value="BOD">BOD</option>
                     <option value="PRD">PRD</option>
                     <option value="User">User</option>
+                    <option value="TeamAdmin">TeamAdmin</option>
                   </select>
                 </div>
                 <div className="form-group">

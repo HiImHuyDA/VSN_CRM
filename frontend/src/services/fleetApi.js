@@ -19,8 +19,10 @@ export const importDrivers = (rows) => api.post('/fleet/drivers/batch', { rows }
 export const getBookings = (params) => api.get('/fleet/bookings', { params });
 export const createBooking = (data) => api.post('/fleet/bookings', data);
 export const getBookingDetail = (id) => api.get(`/fleet/bookings/${id}`);
+export const getBookingHistory = (id) => api.get(`/fleet/bookings/${id}/history`);
 export const updateBooking = (id, data) => api.put(`/fleet/bookings/${id}`, data);
 export const updateBookingStatus = (id, data) => api.put(`/fleet/bookings/${id}/status`, data);
+
 
 // ── Export ──
 export const exportBookingsUrl = (params) => {
@@ -31,3 +33,7 @@ export const exportBookingsUrl = (params) => {
 // ── Geocoding ──
 export const suggestLocations = (q) => api.get('/fleet/geocode/suggest', { params: { q } });
 export const resolveLocation = (params) => api.get('/fleet/geocode/resolve', { params });
+
+// ── Calendar ──
+export const getVehicleCalendar = (params) => api.get('/fleet/bookings/calendar', { params });
+

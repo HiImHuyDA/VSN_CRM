@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { getBookingDetail, updateBookingStatus, getVehicles, getDrivers } from '../../services/fleetApi';
+import { getBookingDetail, updateBookingStatus, getVehicles, getDrivers, getBookingHistory } from '../../services/fleetApi';
 import { formatDate } from '../../utils/helpers';
 
 export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onStatusUpdated, currentUser }) {
@@ -9,6 +10,9 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
   const [booking, setBooking] = useState(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState('info'); // 'info', 'route', 'approval', 'history'
+  const [historyList, setHistoryList] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Modals status
   const [showApproveModal, setShowApproveModal] = useState(false);
@@ -31,6 +35,8 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
   useEffect(() => {
     if (isOpen && bookingId) {
       loadBookingDetails();
+      loadHistoryLogs();
+      setActiveTab('info');
     }
   }, [isOpen, bookingId]);
 
@@ -45,8 +51,21 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
       toast.error('Lỗi khi tải chi tiết yêu cầu đặt xe: ' + err.message);
       onClose();
     } finally {
-      loading && setLoading(false);
       setLoading(false);
+    }
+  };
+
+  const loadHistoryLogs = async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await getBookingHistory(bookingId);
+      if (res.success) {
+        setHistoryList(res.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to load history:', err);
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -81,6 +100,7 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
       if (res.success) {
         toast.success('Đã phê duyệt yêu cầu đi công tác.');
         loadBookingDetails();
+        loadHistoryLogs();
         if (onStatusUpdated) onStatusUpdated();
       }
     } catch (err) {
@@ -106,6 +126,7 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
         toast.success('Đã điều phối phương tiện thành công!');
         setShowApproveModal(false);
         loadBookingDetails();
+        loadHistoryLogs();
         if (onStatusUpdated) onStatusUpdated();
       }
     } catch (err) {
@@ -130,6 +151,7 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
         toast.success('Đã từ chối yêu cầu đặt xe.');
         setShowRejectModal(false);
         loadBookingDetails();
+        loadHistoryLogs();
         if (onStatusUpdated) onStatusUpdated();
       }
     } catch (err) {
@@ -151,6 +173,7 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
         toast.success('Đã hủy yêu cầu đặt xe.');
         setShowCancelModal(false);
         loadBookingDetails();
+        loadHistoryLogs();
         if (onStatusUpdated) onStatusUpdated();
       }
     } catch (err) {
@@ -169,6 +192,7 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
       if (res.success) {
         toast.success('Đã hoàn thành chuyến xe.');
         loadBookingDetails();
+        loadHistoryLogs();
         if (onStatusUpdated) onStatusUpdated();
       }
     } catch (err) {
@@ -179,8 +203,11 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
   if (!isOpen) return null;
 
   const role = currentUser?.role;
-  const isApprover = ['Admin', 'BOD', 'PRD', 'TeamAdmin'].includes(role);
-  const isCreator = currentUser?.mnv === booking?.RequesterMNV;
+  const canEdit = !!booking?.permissions?.canEdit;
+  const canCancel = !!booking?.permissions?.canCancel;
+  const canApproveSupervisor = !!booking?.permissions?.canApproveSupervisor;
+  const canApproveTeamAdmin = !!booking?.permissions?.canApproveTeamAdmin;
+
 
   const getStatusBadge = (status) => {
     const map = {
@@ -212,7 +239,113 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
     }
   }
 
-  return (
+  // Phân tích thông tin phê duyệt từ lịch sử hoặc thông tin trên booking
+  const getApprovalDetails = () => {
+    let supervisor = { status: 'pending', name: '', email: '', comment: '', date: null };
+    let teamAdmin = { status: 'pending', name: '', email: '', comment: '', date: null };
+
+    const sortedLogs = [...historyList].sort((a, b) => new Date(a.CreatedAt) - new Date(b.CreatedAt));
+
+    sortedLogs.forEach(log => {
+      let parsed = {};
+      try {
+        if (log.Details) parsed = JSON.parse(log.Details);
+      } catch (e) {}
+
+      if (log.Action === 'Giám sát đã duyệt') {
+        supervisor = {
+          status: 'approved',
+          name: parsed.actorName || log.CreatorName || 'Giám sát trực tiếp',
+          email: parsed.actorEmail || '',
+          comment: parsed.comment || 'Đã duyệt yêu cầu',
+          date: log.CreatedAt
+        };
+      } else if (log.Action === 'Giám sát từ chối') {
+        supervisor = {
+          status: 'rejected',
+          name: parsed.actorName || log.CreatorName || 'Giám sát trực tiếp',
+          email: parsed.actorEmail || '',
+          comment: parsed.comment || log.Details || '',
+          date: log.CreatedAt
+        };
+      } else if (log.Action === 'Team Admin đã duyệt' || log.Action === 'Đã duyệt') {
+        supervisor.status = 'approved';
+        teamAdmin = {
+          status: 'approved',
+          name: parsed.actorName || log.CreatorName || booking?.ApprovedBy || 'Team Admin',
+          email: parsed.actorEmail || '',
+          comment: parsed.comment || booking?.AssignedNote || '',
+          date: log.CreatedAt || booking?.ApprovedAt
+        };
+      } else if (log.Action === 'Team Admin từ chối' || log.Action === 'Từ chối') {
+        teamAdmin = {
+          status: 'rejected',
+          name: parsed.actorName || log.CreatorName || 'Team Admin',
+          email: parsed.actorEmail || '',
+          comment: parsed.comment || booking?.RejectedReason || '',
+          date: log.CreatedAt
+        };
+      }
+    });
+
+    if (historyList.length === 0 && booking) {
+      const status = booking.Status;
+      if (['Giám sát đã duyệt', 'Team Admin đã duyệt', 'Đã duyệt', 'Hoàn thành'].includes(status)) {
+        supervisor = {
+          status: 'approved',
+          name: 'Giám sát trực tiếp',
+          email: '',
+          comment: 'Đã duyệt qua Teams',
+          date: booking.UpdatedAt
+        };
+      } else if (status === 'Giám sát từ chối') {
+        supervisor = {
+          status: 'rejected',
+          name: 'Giám sát trực tiếp',
+          email: '',
+          comment: booking.RejectedReason || 'Từ chối yêu cầu',
+          date: booking.UpdatedAt
+        };
+      }
+
+      if (['Team Admin đã duyệt', 'Đã duyệt', 'Hoàn thành'].includes(status)) {
+        teamAdmin = {
+          status: 'approved',
+          name: booking.ApprovedBy || 'Team Admin',
+          email: '',
+          comment: booking.AssignedNote || 'Đã phân xe & tài xế',
+          date: booking.ApprovedAt || booking.UpdatedAt
+        };
+      } else if (status === 'Team Admin từ chối' || status === 'Từ chối') {
+        teamAdmin = {
+          status: 'rejected',
+          name: booking.ApprovedBy || 'Team Admin',
+          email: '',
+          comment: booking.RejectedReason || 'Từ chối phân xe',
+          date: booking.ApprovedAt || booking.UpdatedAt
+        };
+      }
+    }
+
+    return { supervisor, teamAdmin };
+  };
+
+  const { supervisor, teamAdmin } = getApprovalDetails();
+
+  const TAB = (key, label) => (
+    <button
+      className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+        activeTab === key
+          ? 'border-primary text-primary'
+          : 'border-transparent text-on-surface-variant hover:text-primary'
+      }`}
+      onClick={() => setActiveTab(key)}
+    >
+      {label}
+    </button>
+  );
+
+  return ReactDOM.createPortal(
     <>
       {/* Drawer Overlay */}
       <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm" onClick={onClose} />
@@ -235,147 +368,314 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
           </button>
         </div>
 
+        {/* Tabs Bar */}
+        <div className="flex border-b border-outline-variant bg-surface px-2 overflow-x-auto">
+          {TAB('info', 'Thông tin')}
+          {TAB('route', 'Lộ trình')}
+          {TAB('approval', 'Phê duyệt')}
+          {TAB('history', `Lịch sử (${historyList.length})`)}
+        </div>
+
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+        <div className="flex-1 overflow-y-auto p-5">
           {loading || !booking ? (
             <div className="flex justify-center items-center h-48 text-on-surface-variant">
               <span className="material-symbols-outlined animate-spin mr-2">refresh</span> Đang tải thông tin...
             </div>
           ) : (
             <>
-              {/* Lộ Trình */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📍 Chi Tiết Lộ Trình</h4>
-                <div className="grid grid-cols-1 gap-2 text-sm">
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Điểm đón khách (Pickup):</span>
-                    <span className="font-semibold">{booking.PickupLocation}</span>
+              {/* TAB 1: THÔNG TIN */}
+              {activeTab === 'info' && (
+                <div className="space-y-6">
+                  {/* Thông tin thời gian và nhân sự */}
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📅 Thời Gian & Nhân Sự</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-xs text-on-surface-variant block">Giờ khởi hành:</span>
+                        <span className="font-semibold">{formatDate(booking.DepartureTime, 'dd/MM/yyyy HH:mm')}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-on-surface-variant block">Giờ về (dự kiến):</span>
+                        <span className="font-semibold">{booking.ReturnTime ? formatDate(booking.ReturnTime, 'dd/MM/yyyy HH:mm') : 'Chưa đăng ký'}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-on-surface-variant block">Người yêu cầu:</span>
+                        <span className="font-semibold">{booking.RequesterName} ({booking.RequesterDept || 'Không rõ PB'})</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-on-surface-variant block">Số hành khách:</span>
+                        <span className="font-semibold">{booking.PassengerCount} người</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-on-surface-variant block">Loại phương tiện:</span>
+                        <span className="font-semibold">{booking.VehicleType || 'Xe công ty'}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-on-surface-variant block">Ngày tạo yêu cầu:</span>
+                        <span className="font-semibold">{formatDate(booking.CreatedAt, 'dd/MM/yyyy HH:mm')}</span>
+                      </div>
+                    </div>
                   </div>
-                  {parsedStops.length > 0 && (
-                    <div>
-                      <span className="text-xs text-on-surface-variant block">Điểm dừng trung gian:</span>
-                      <ul className="list-disc pl-5 font-medium space-y-0.5 mt-0.5">
-                        {parsedStops.map((stop, i) => (
-                          <li key={i}>{stop}</li>
-                        ))}
-                      </ul>
+
+                  {/* Người tham gia đi cùng */}
+                  {(booking.Attendees || booking.AttendeesEmail) && (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">👥 Người Tham Gia Đi Cùng</h4>
+                      <div className="grid grid-cols-1 gap-2 text-sm">
+                        {booking.Attendees && (
+                          <div>
+                            <span className="text-xs text-on-surface-variant block">Danh sách người đi cùng:</span>
+                            <span className="font-semibold">{booking.Attendees}</span>
+                          </div>
+                        )}
+                        {booking.AttendeesEmail && (
+                          <div>
+                            <span className="text-xs text-on-surface-variant block">Email:</span>
+                            <span className="text-on-surface-variant break-all">{booking.AttendeesEmail}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Điểm đến (Destination):</span>
-                    <span className="font-semibold">{booking.Destination}</span>
-                  </div>
-                </div>
-              </div>
 
-              {/* Thông tin thời gian và nhân sự */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📅 Thời Gian & Nhân Sự</h4>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Giờ khởi hành:</span>
-                    <span className="font-semibold">{formatDate(booking.DepartureTime, 'dd/MM/yyyy HH:mm')}</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Giờ về (dự kiến):</span>
-                    <span className="font-semibold">{booking.ReturnTime ? formatDate(booking.ReturnTime, 'dd/MM/yyyy HH:mm') : 'Chưa đăng ký'}</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Người yêu cầu:</span>
-                    <span className="font-semibold">{booking.RequesterName} ({booking.RequesterDept || 'Không rõ PB'})</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Số hành khách:</span>
-                    <span className="font-semibold">{booking.PassengerCount} người</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Độ ưu tiên:</span>
-                    <span className="font-semibold">{booking.Priority}</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Loại phương tiện:</span>
-                    <span className="font-semibold">{booking.VehicleType || 'Xe công ty'}</span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-on-surface-variant block">Ngày tạo yêu cầu:</span>
-                    <span className="font-semibold">{formatDate(booking.CreatedAt, 'dd/MM/yyyy HH:mm')}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Người tham gia đi cùng */}
-              {(booking.Attendees || booking.AttendeesEmail) && (
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">👥 Người Tham Gia Đi Cùng</h4>
-                  <div className="grid grid-cols-1 gap-2 text-sm">
-                    {booking.Attendees && (
-                      <div>
-                        <span className="text-xs text-on-surface-variant block">Danh sách người đi cùng:</span>
-                        <span className="font-semibold">{booking.Attendees}</span>
-                      </div>
-                    )}
-                    {booking.AttendeesEmail && (
-                      <div>
-                        <span className="text-xs text-on-surface-variant block">Email:</span>
-                        <span className="text-on-surface-variant break-all">{booking.AttendeesEmail}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Mục đích di chuyển */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">🎯 Mục Đích Sử Dụng Xe</h4>
-                <div className="p-3 bg-gray-50 rounded-xl text-sm italic">
-                  "{booking.Purpose}"
-                </div>
-              </div>
-
-              {/* Ghi chú thêm */}
-              {booking.Notes && (
-                <div className="space-y-2">
-                  <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📝 Ghi Chú Yêu Cầu</h4>
-                  <p className="text-sm font-medium">{booking.Notes}</p>
-                </div>
-              )}
-
-              {/* Thông tin phân công xe và tài xế (nếu đã duyệt) */}
-              {booking.Status === 'Đã duyệt' && (
-                <div className="p-4 bg-green-50/50 border border-green-200 rounded-xl space-y-3">
-                  <h4 className="text-xs font-bold text-green-800 tracking-wider uppercase">🚗 Xe & Tài Xế Phân Công</h4>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <span className="text-xs text-green-700 block">Xe phân phối:</span>
-                      <span className="font-bold text-green-900">{booking.VehiclePlate} ({booking.VehicleBrand} {booking.VehicleModel})</span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-green-700 block">Tài xế lái xe:</span>
-                      <span className="font-bold text-green-900">{booking.DriverName || 'Tự lái'} {booking.DriverPhone ? `(${booking.DriverPhone})` : ''}</span>
+                  {/* Mục đích di chuyển */}
+                  <div className="space-y-2">
+                    <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">🎯 Mục Đích Sử Dụng Xe</h4>
+                    <div className="p-3 bg-gray-50 rounded-xl text-sm italic">
+                      "{booking.Purpose}"
                     </div>
                   </div>
-                  {booking.AssignedNote && (
-                    <div className="text-xs text-green-800 border-t border-green-200/60 pt-2">
-                      <span className="font-semibold block">Ghi chú điều phối:</span>
-                      <span>{booking.AssignedNote}</span>
+
+                  {/* Ghi chú thêm */}
+                  {booking.Notes && (
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📝 Ghi Chú Yêu Cầu</h4>
+                      <p className="text-sm font-medium">{booking.Notes}</p>
+                    </div>
+                  )}
+
+                  {/* Thông tin phân công xe và tài xế (nếu đã duyệt) */}
+                  {['Đã duyệt', 'Team Admin đã duyệt', 'Hoàn thành'].includes(booking.Status) && (
+                    <div className="p-4 bg-green-50/50 border border-green-200 rounded-xl space-y-3">
+                      <h4 className="text-xs font-bold text-green-800 tracking-wider uppercase">🚗 Xe & Tài Xế Phân Công</h4>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-xs text-green-700 block">Xe phân phối:</span>
+                          <span className="font-bold text-green-900">{booking.VehiclePlate || 'Chưa rõ'} ({booking.VehicleBrand || 'Xe công tác'})</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-green-700 block">Tài xế lái xe:</span>
+                          <span className="font-bold text-green-900">{booking.DriverName || 'Tự lái'} {booking.DriverPhone ? `(${booking.DriverPhone})` : ''}</span>
+                        </div>
+                      </div>
+                      {booking.AssignedNote && (
+                        <div className="text-xs text-green-800 border-t border-green-200/60 pt-2">
+                          <span className="font-semibold block">Ghi chú điều phối:</span>
+                          <span>{booking.AssignedNote}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Thông tin Từ chối/Hủy nếu có */}
+                  {['Từ chối', 'Giám sát từ chối', 'Team Admin từ chối'].includes(booking.Status) && (
+                    <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+                      <h4 className="text-xs font-bold text-red-800 tracking-wider uppercase mb-1">❌ Lý Do Từ Chối</h4>
+                      <p className="text-sm text-red-900 font-semibold">{booking.RejectedReason || 'Không ghi rõ lý do.'}</p>
+                      {booking.ApprovedBy && (
+                        <p className="text-xs text-red-700 mt-2">Từ chối bởi: {booking.ApprovedBy} {booking.ApprovedAt ? `vào lúc ${formatDate(booking.ApprovedAt, 'dd/MM/yyyy HH:mm')}` : ''}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {booking.Status === 'Đã hủy' && (
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                      <h4 className="text-xs font-bold text-gray-800 tracking-wider uppercase mb-1">🛑 Lý Do Hủy Yêu Cầu</h4>
+                      <p className="text-sm text-gray-900 font-semibold">{booking.CancelledReason || 'Người dùng tự hủy.'}</p>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Thông tin Từ chối/Hủy nếu có */}
-              {['Từ chối', 'Giám sát từ chối', 'Team Admin từ chối'].includes(booking.Status) && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-                  <h4 className="text-xs font-bold text-red-800 tracking-wider uppercase mb-1">❌ Lý Do Từ Chối</h4>
-                  <p className="text-sm text-red-900 font-semibold">{booking.RejectedReason || 'Không ghi rõ lý do.'}</p>
-                  <p className="text-xs text-red-700 mt-2">Phê duyệt bởi: {booking.ApprovedBy || 'Hệ thống'} vào lúc {formatDate(booking.ApprovedAt, 'dd/MM/yyyy HH:mm')}</p>
+              {/* TAB 2: LỘ TRÌNH */}
+              {activeTab === 'route' && (
+                <div className="space-y-6">
+                  <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📍 Chi Tiết Lộ Trình</h4>
+                  <div className="relative pl-6 space-y-6 border-l-2 border-primary/20 ml-3 py-2">
+                    {/* Điểm đón */}
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-success flex items-center justify-center border-2 border-white shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                      </span>
+                      <div className="text-sm">
+                        <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm đón khách (Pickup):</span>
+                        <span className="font-semibold text-on-surface text-base">{booking.PickupLocation}</span>
+                      </div>
+                    </div>
+
+                    {/* Các điểm dừng */}
+                    {parsedStops.map((stop, index) => (
+                      <div key={index} className="relative">
+                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center border-2 border-white shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                        </span>
+                        <div className="text-sm">
+                          <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm dừng {index + 1}:</span>
+                          <span className="font-medium text-on-surface">{stop}</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Điểm đến */}
+                    <div className="relative">
+                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center border-2 border-white shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                      </span>
+                      <div className="text-sm">
+                        <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm đến cuối (Destination):</span>
+                        <span className="font-bold text-on-surface text-base">{booking.Destination}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {booking.Status === 'Đã hủy' && (
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <h4 className="text-xs font-bold text-gray-800 tracking-wider uppercase mb-1">🛑 Lý Do Hủy Yêu Cầu</h4>
-                  <p className="text-sm text-gray-900 font-semibold">{booking.CancelledReason || 'Người dùng tự hủy.'}</p>
+              {/* TAB 3: PHÊ DUYỆT */}
+              {activeTab === 'approval' && (
+                <div className="space-y-6">
+                  {/* Cấp 1: Giám sát */}
+                  <div className="p-4 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm space-y-3">
+                    <div className="flex justify-between items-center border-b border-outline-variant/60 pb-2">
+                      <span className="font-bold text-sm text-primary">CẤP 1: GIÁM SÁT DUYỆT</span>
+                      {supervisor.status === 'approved' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-success-container text-success border border-success/20">
+                          Đã duyệt
+                        </span>
+                      )}
+                      {supervisor.status === 'rejected' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-error-container text-error border border-error/20">
+                          Từ chối
+                        </span>
+                      )}
+                      {supervisor.status === 'pending' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          Chờ duyệt
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-on-surface-variant">Người duyệt:</span>
+                        <span className="font-semibold text-on-surface">{supervisor.name || 'Giám sát trực tiếp (Quản lý)'}</span>
+                      </div>
+                      {supervisor.email && (
+                        <div className="flex justify-between">
+                          <span className="text-on-surface-variant">Email:</span>
+                          <span className="font-medium text-on-surface">{supervisor.email}</span>
+                        </div>
+                      )}
+                      {supervisor.date && (
+                        <div className="flex justify-between">
+                          <span className="text-on-surface-variant">Thời gian:</span>
+                          <span className="font-medium text-on-surface">{formatDate(supervisor.date, 'dd/MM/yyyy HH:mm')}</span>
+                        </div>
+                      )}
+                      {(supervisor.comment || supervisor.status === 'rejected') && (
+                        <div className="mt-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                          <span className="text-xs text-on-surface-variant font-semibold block mb-0.5">Ý kiến/Lý do:</span>
+                          <span className="text-sm font-medium italic">"{supervisor.comment || 'Không có ý kiến'}"</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cấp 2: Team Admin */}
+                  <div className="p-4 rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm space-y-3">
+                    <div className="flex justify-between items-center border-b border-outline-variant/60 pb-2">
+                      <span className="font-bold text-sm text-primary">CẤP 2: TEAM ADMIN DUYỆT & XẾP XE</span>
+                      {teamAdmin.status === 'approved' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-success-container text-success border border-success/20">
+                          Đã duyệt
+                        </span>
+                      )}
+                      {teamAdmin.status === 'rejected' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-error-container text-error border border-error/20">
+                          Từ chối
+                        </span>
+                      )}
+                      {teamAdmin.status === 'pending' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          Chờ duyệt
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-on-surface-variant">Người duyệt:</span>
+                        <span className="font-semibold text-on-surface">{teamAdmin.name || 'Ban điều phối (Team Admin)'}</span>
+                      </div>
+                      {teamAdmin.email && (
+                        <div className="flex justify-between">
+                          <span className="text-on-surface-variant">Email:</span>
+                          <span className="font-medium text-on-surface">{teamAdmin.email}</span>
+                        </div>
+                      )}
+                      {teamAdmin.date && (
+                        <div className="flex justify-between">
+                          <span className="text-on-surface-variant">Thời gian:</span>
+                          <span className="font-medium text-on-surface">{formatDate(teamAdmin.date, 'dd/MM/yyyy HH:mm')}</span>
+                        </div>
+                      )}
+                      {(teamAdmin.comment || teamAdmin.status === 'rejected') && (
+                        <div className="mt-2 bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                          <span className="text-xs text-on-surface-variant font-semibold block mb-0.5">Ghi chú phân xe/Ý kiến:</span>
+                          <span className="text-sm font-medium italic">"{teamAdmin.comment || 'Không có ghi chú'}"</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: LỊCH SỬ */}
+              {activeTab === 'history' && (
+                <div className="space-y-4">
+                  <h4 className="text-sm font-bold text-primary mb-3">Lịch sử hoạt động của đơn</h4>
+                  {loadingHistory ? (
+                    <div className="text-center py-6 text-on-surface-variant text-sm">Đang tải lịch sử...</div>
+                  ) : historyList.length === 0 ? (
+                    <p className="text-sm text-on-surface-variant">Không có lịch sử ghi nhận nào.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {historyList.map((log) => {
+                        let parsed = {};
+                        try {
+                          if (log.Details) parsed = JSON.parse(log.Details);
+                        } catch (e) {}
+                        return (
+                          <div key={log.Id} className="p-3.5 rounded-xl border border-outline-variant bg-surface-container-lowest hover:border-primary/30 transition-colors">
+                            <div className="flex justify-between items-start mb-1">
+                              <span className="font-bold text-sm text-on-surface bg-surface-container px-2 py-0.5 rounded">
+                                {log.Action}
+                              </span>
+                              <span className="text-[11px] text-on-surface-variant">
+                                {formatDate(log.CreatedAt, 'dd/MM/yyyy HH:mm:ss')}
+                              </span>
+                            </div>
+                            <div className="text-xs text-on-surface-variant mt-1.5 flex flex-wrap justify-between gap-1">
+                              <span>Thực hiện bởi: <strong className="text-on-surface font-semibold">{log.CreatorName || log.MNV}</strong></span>
+                              {parsed.comment && (
+                                <span className="w-full text-xs bg-gray-50 p-1.5 rounded mt-1 text-on-surface font-medium block italic">
+                                  "{parsed.comment}"
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -385,8 +685,8 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
         {/* Footer Actions */}
         {!loading && booking && (
           <div className="p-5 border-t border-border bg-gray-50 flex gap-2 justify-end flex-wrap">
-            {/* Sửa đơn (creator hoặc admin được phép ở các trạng thái cho phép) */}
-            {(isCreator || role === 'Admin') && ['Chờ phản hồi', 'Giám sát từ chối', 'Team Admin từ chối', 'Team Admin đã duyệt', 'Đã duyệt', 'Chờ duyệt'].includes(booking.Status) && (
+            {/* Chỉnh sửa */}
+            {canEdit && (
               <button
                 onClick={() => {
                   navigate(`/vehicle/new?bookingId=${booking.Id}`);
@@ -398,8 +698,8 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               </button>
             )}
 
-            {/* Hủy đơn (creator hoặc admin được phép ở các trạng thái cho phép) */}
-            {(isCreator || role === 'Admin') && ['Chờ phản hồi', 'Giám sát từ chối', 'Team Admin từ chối', 'Team Admin đã duyệt', 'Đã duyệt', 'Chờ duyệt'].includes(booking.Status) && (
+            {/* Hủy đơn */}
+            {canCancel && (
               <button
                 onClick={() => setShowCancelModal(true)}
                 className="btn btn-outline text-danger border-danger hover:bg-red-50 flex-1 sm:flex-none"
@@ -408,8 +708,8 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               </button>
             )}
 
-            {/* Cấp 1: Chờ phản hồi -> Giám sát duyệt / Từ chối (bất cứ approver nào cũng được) */}
-            {(booking.Status === 'Chờ phản hồi' || booking.Status === 'Chờ duyệt') && isApprover && (
+            {/* Phê duyệt cấp 1 */}
+            {canApproveSupervisor && (
               <>
                 <button
                   onClick={() => setShowRejectModal(true)}
@@ -426,8 +726,8 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               </>
             )}
 
-            {/* Cấp 2: Giám sát đã duyệt -> Team Admin duyệt & phân xe (chỉ Team Admin hoặc Admin) */}
-            {booking.Status === 'Giám sát đã duyệt' && (role === 'TeamAdmin' || role === 'Admin') && (
+            {/* Phê duyệt cấp 2 */}
+            {canApproveTeamAdmin && (
               <>
                 <button
                   onClick={() => setShowRejectModal(true)}
@@ -444,8 +744,8 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               </>
             )}
 
-            {/* Đã duyệt / Team Admin đã duyệt -> Hoàn thành (Admin/TeamAdmin/BOD/PRD) */}
-            {['Đã duyệt', 'Team Admin đã duyệt'].includes(booking.Status) && isApprover && (
+            {/* Hoàn thành */}
+            {(role === 'Admin' || role === 'TeamAdmin') && ['Đã duyệt', 'Team Admin đã duyệt'].includes(booking.Status) && (
               <button
                 onClick={handleComplete}
                 className="btn btn-primary w-full bg-purple-600 hover:bg-purple-700 border-none"
@@ -453,6 +753,7 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
                 Hoàn Thành Chuyến Đi
               </button>
             )}
+
           </div>
         )}
       </div>
@@ -609,6 +910,7 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body
   );
 }

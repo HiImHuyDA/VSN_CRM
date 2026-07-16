@@ -200,22 +200,11 @@ export default function SubmissionDrawer({ projectId, onClose, currentUser }) {
   const role = currentUser?.role;
   const status = project?.Status;
 
-  let canApprove = false;
-  if (role === 'Admin') {
-    canApprove = ['Chờ phản hồi', 'PRD đã duyệt'].includes(status);
-  } else if (role === 'PRD') {
-    canApprove = ['Chờ phản hồi'].includes(status);
-  } else if (role === 'BOD') {
-    canApprove = status === 'PRD đã duyệt';
-  }
-
-  const isApproved = ['Đã duyệt', 'BOD đã duyệt'].includes(status);
-  const isRejected = ['Từ chối', 'PRD từ chối', 'BOD từ chối'].includes(status);
-  
-  const isCreator = currentUser?.mnv === project?.SubmitterMNV;
-  // Chỉ cho phép sửa/huỷ trên bản gốc, không phải khi đang xem bản cũ
   const isViewedCurrent = String(viewedProjectId).toLowerCase() === String(projectId).toLowerCase();
-  const canEditCancel = isViewedCurrent && isCreator && ['Chờ phản hồi', 'Từ chối', 'PRD từ chối', 'BOD từ chối', 'BOD đã duyệt'].includes(status);
+  const canApprove = !!data?.permissions?.canApprove;
+  const canEdit = isViewedCurrent && !!data?.permissions?.canEdit;
+  const canCancel = isViewedCurrent && !!data?.permissions?.canCancel;
+
 
   // Tính toán Ngày tiếp đón & Địa điểm
   let uniqueDates = '—';
@@ -621,21 +610,21 @@ export default function SubmissionDrawer({ projectId, onClose, currentUser }) {
 
         {/* Footer */}
         <div className="p-4 border-t border-outline-variant bg-surface flex gap-3">
-          {canEditCancel && (
-            <>
-              <button
-                onClick={() => navigate(`/edit/${projectId}`)}
-                className="flex-1 border border-primary text-primary hover:bg-primary/10 py-2.5 rounded-xl font-bold text-sm transition-colors"
-              >
-                ✏️ Chỉnh Sửa
-              </button>
-              <button
-                onClick={() => setModalMode('cancel')}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl font-bold text-sm transition-colors"
-              >
-                🗑️ Huỷ Đơn
-              </button>
-            </>
+          {canEdit && (
+            <button
+              onClick={() => navigate(`/edit/${projectId}`)}
+              className="flex-1 border border-primary text-primary hover:bg-primary/10 py-2.5 rounded-xl font-bold text-sm transition-colors"
+            >
+              ✏️ Chỉnh Sửa
+            </button>
+          )}
+          {canCancel && (
+            <button
+              onClick={() => setModalMode('cancel')}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl font-bold text-sm transition-colors"
+            >
+              🗑️ Huỷ Đơn
+            </button>
           )}
 
           {canApprove ? (
@@ -653,11 +642,12 @@ export default function SubmissionDrawer({ projectId, onClose, currentUser }) {
                 ❌ Từ Chối
               </button>
             </>
-          ) : !canEditCancel && (
+          ) : (!canEdit && !canCancel) && (
             <button onClick={onClose} className="flex-1 border border-outline-variant text-on-surface py-2.5 rounded-xl font-semibold text-sm hover:bg-surface-container-high transition-colors">
               Đóng
             </button>
           )}
+
         </div>
       </div>
 

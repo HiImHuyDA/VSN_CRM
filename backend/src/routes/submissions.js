@@ -21,7 +21,9 @@ const {
  */
 router.get('/', authenticateToken, async (req, res, next) => {
   try {
-    const { search = '', status = '', page = 1, pageSize = 20, role = '', mnv = '', tab = 'tracking' } = req.query;
+    const { search = '', status = '', page = 1, pageSize = 20, tab = 'tracking' } = req.query;
+    const role = req.user.role;
+    const mnv = req.user.mnv;
     const pool = await getCsrPool();
 
     const result = await pool.request()
@@ -33,6 +35,7 @@ router.get('/', authenticateToken, async (req, res, next) => {
       .input('PageSize', sql.Int, parseInt(pageSize))
       .input('Tab', sql.NVarChar(50), tab)
       .execute('usp_Submission_List');
+
 
     const submissions = result.recordsets[0] || [];
     const totalCount = result.recordsets[1]?.[0]?.TotalCount ?? 0;
@@ -158,6 +161,126 @@ router.get('/:projectId', async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
     }
 
+    // AUTH CHECK FOR VIEWING DETAIL (only if authorization header exists)
+    let user = null;
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const JWT_SECRET = process.env.JWT_SECRET || 'csr_super_secret_key_123';
+        const token = req.headers.authorization.substring(7);
+        user = jwt.verify(token, JWT_SECRET);
+      } catch (err) {
+        // Ignore parsing errors for public evaluation access
+      }
+    }
+
+    if (user) {
+      const actorRole = user.role;
+      const actorMNV = user.mnv;
+
+      if (actorRole !== 'Admin' && actorRole !== 'PRD' && actorRole !== 'TeamAdmin') {
+        if (actorRole === 'User') {
+          let isAllowed = project.SubmitterMNV === actorMNV;
+          if (!isAllowed) {
+            // Check manager relationship
+            const empRes = await pool.request()
+              .input('MNV', sql.NVarChar(50), actorMNV)
+              .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+            const actorEmail = empRes.recordset[0]?.Email;
+            if (actorEmail) {
+              const managerCheck = await pool.request()
+                .input('CreatorMNV', sql.NVarChar(50), project.SubmitterMNV)
+                .input('ManagerEmail', sql.NVarChar(200), actorEmail)
+                .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+              if (managerCheck.recordset.length > 0) {
+                isAllowed = true;
+              }
+            }
+          }
+          if (!isAllowed) {
+            return res.status(403).json({ success: false, error: 'Bạn không có quyền xem thông tin đơn này' });
+          }
+        } else if (actorRole === 'BOD') {
+          let isAllowed = project.SubmitterMNV === actorMNV;
+          const ALLOWED_BOD_STATUSES = ['PRD đã duyệt', 'BOD đã duyệt', 'BOD từ chối', 'Hoàn thành'];
+          if (!isAllowed && ALLOWED_BOD_STATUSES.includes(project.Status)) {
+            isAllowed = true;
+          }
+          if (!isAllowed) {
+            return res.status(403).json({ success: false, error: 'Bạn không có quyền xem thông tin đơn này ở trạng thái hiện tại' });
+          }
+        } else {
+          return res.status(403).json({ success: false, error: 'Vai trò của bạn không có quyền xem đơn này' });
+        }
+      }
+    }
+
+    // Calculate permissions for actions
+    let canEdit = false;
+    let canCancel = false;
+    let canApprove = false;
+    let canReject = false;
+
+    if (user) {
+      const actorRole = user.role;
+      const actorMNV = user.mnv;
+
+      // Fetch manager email of actor
+      const empRes = await pool.request()
+        .input('MNV', sql.NVarChar(50), actorMNV)
+        .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+      const actorEmail = empRes.recordset[0]?.Email;
+
+      let isCreatorManager = false;
+      if (actorEmail) {
+        const managerCheck = await pool.request()
+          .input('CreatorMNV', sql.NVarChar(50), project.SubmitterMNV)
+          .input('ManagerEmail', sql.NVarChar(200), actorEmail)
+          .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+        if (managerCheck.recordset.length > 0) {
+          isCreatorManager = true;
+        }
+      }
+
+      const isCreator = project.SubmitterMNV === actorMNV;
+
+      // Edit & Cancel rules:
+      if (actorRole === 'Admin') {
+        canEdit = true;
+        canCancel = true;
+      } else {
+        if (isCreator) {
+          canEdit = true;
+          canCancel = true;
+        } else if (['User', 'TeamAdmin'].includes(actorRole) && isCreatorManager) {
+          canEdit = true;
+          canCancel = true;
+        }
+      }
+
+      // Status limitations for edit
+      const ALLOWED_EDIT_STATUSES = ['Chờ phản hồi', 'Từ chối', 'PRD từ chối', 'BOD từ chối', 'BOD đã duyệt'];
+      if (!ALLOWED_EDIT_STATUSES.includes(project.Status)) {
+        canEdit = false;
+      }
+      // Status limitations for cancel (cannot cancel if already cancelled or completed)
+      if (['Đã hủy', 'Đã huỷ', 'Hoàn thành'].includes(project.Status)) {
+        canCancel = false;
+      }
+
+      // Approval sequence rules:
+      if (actorRole === 'Admin') {
+        canApprove = ['Chờ phản hồi', 'PRD đã duyệt'].includes(project.Status);
+        canReject = ['Chờ phản hồi', 'PRD đã duyệt'].includes(project.Status);
+      } else if (actorRole === 'PRD' && project.Status === 'Chờ phản hồi') {
+        canApprove = true;
+        canReject = true;
+      } else if (actorRole === 'BOD' && project.Status === 'PRD đã duyệt') {
+        canApprove = true;
+        canReject = true;
+      }
+    }
+
     // Nếu đơn có trạng thái đã hủy (Đã hủy / Đã huỷ), lấy lý do hủy mới nhất từ log duyệt
     const isCancelled = project.Status === 'Đã hủy' || project.Status === 'Đã huỷ';
     if (isCancelled) {
@@ -169,11 +292,19 @@ router.get('/:projectId', async (req, res, next) => {
       }
     }
 
-    res.json({ success: true, data: { project, tasks } });
+    res.json({ 
+      success: true, 
+      data: { 
+        project, 
+        tasks,
+        permissions: { canEdit, canCancel, canApprove, canReject }
+      } 
+    });
   } catch (err) {
     next(err);
   }
 });
+
 
 /**
  * POST /api/submissions
@@ -319,6 +450,39 @@ router.put('/:projectId', authenticateToken, async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Không tìm thấy đơn gốc' });
     }
 
+    // CHECK EDIT PERMISSION
+    const actorRole = req.user.role;
+    const actorMNV = req.user.mnv;
+
+    let canEdit = false;
+    if (actorRole === 'Admin') {
+      canEdit = true;
+    } else {
+      if (oldSub.SubmitterMNV === actorMNV) {
+        canEdit = true;
+      } else if (['User', 'TeamAdmin'].includes(actorRole)) {
+        // Check manager relation
+        const empRes = await pool.request()
+          .input('MNV', sql.NVarChar(50), actorMNV)
+          .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+        const actorEmail = empRes.recordset[0]?.Email;
+        if (actorEmail) {
+          const managerCheck = await pool.request()
+            .input('CreatorMNV', sql.NVarChar(50), oldSub.SubmitterMNV)
+            .input('ManagerEmail', sql.NVarChar(200), actorEmail)
+            .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+          if (managerCheck.recordset.length > 0) {
+            canEdit = true;
+          }
+        }
+      }
+    }
+
+    if (!canEdit) {
+      return res.status(403).json({ success: false, error: 'Bạn không có quyền chỉnh sửa đơn này' });
+    }
+
+
     const isApprovedOrCompleted = ['BOD đã duyệt', 'Hoàn thành'].includes(oldSub.Status);
 
     const {
@@ -433,12 +597,49 @@ router.post('/:projectId/cancel', authenticateToken, async (req, res, next) => {
     const { actorMNV, reason } = req.body;
     const pool = await getCsrPool();
 
-    // Query status trước khi hủy
-    const statusReq = await pool.request()
+    // Query status and submitter trước khi hủy để check quyền
+    const oldSubReq = await pool.request()
       .input('ProjectId', sql.NVarChar(50), projectId)
-      .execute('usp_GetProjectStatus');
-    const oldStatus = statusReq.recordset[0]?.Status;
+      .query('SELECT Status, SubmitterMNV FROM CSR_Projects WHERE Project_id = @ProjectId');
+    const oldStatusSub = oldSubReq.recordset[0];
+    if (!oldStatusSub) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
+    }
+    const oldStatus = oldStatusSub.Status;
     const isApprovedOrCompleted = ['BOD đã duyệt', 'Hoàn thành'].includes(oldStatus);
+
+    // CHECK CANCEL PERMISSION
+    const currentActorRole = req.user.role;
+    const currentActorMNV = req.user.mnv;
+
+    let canCancel = false;
+    if (currentActorRole === 'Admin') {
+      canCancel = true;
+    } else {
+      if (oldStatusSub.SubmitterMNV === currentActorMNV) {
+        canCancel = true;
+      } else if (['User', 'TeamAdmin'].includes(currentActorRole)) {
+        // Check manager relation
+        const empRes = await pool.request()
+          .input('MNV', sql.NVarChar(50), currentActorMNV)
+          .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+        const actorEmail = empRes.recordset[0]?.Email;
+        if (actorEmail) {
+          const managerCheck = await pool.request()
+            .input('CreatorMNV', sql.NVarChar(50), oldStatusSub.SubmitterMNV)
+            .input('ManagerEmail', sql.NVarChar(200), actorEmail)
+            .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+          if (managerCheck.recordset.length > 0) {
+            canCancel = true;
+          }
+        }
+      }
+    }
+
+    if (!canCancel) {
+      return res.status(403).json({ success: false, error: 'Bạn không có quyền huỷ đơn này' });
+    }
+
 
     const result = await pool.request()
       .input('ProjectId', sql.NVarChar(100), projectId)
@@ -529,6 +730,32 @@ router.post('/:projectId/approve', authenticateToken, async (req, res, next) => 
   try {
     const { actorRole, actorMNV, actorName, actorEmail, note } = req.body;
     const pool = await getCsrPool();
+
+    // CHECK APPROVAL STATUS AND ROLE
+    const finalRole = actorRole || req.user.role;
+    
+    // Fetch current status
+    const statusReq = await pool.request()
+      .input('ProjectId', sql.NVarChar(50), req.params.projectId)
+      .query('SELECT Status FROM CSR_Projects WHERE Project_id = @ProjectId');
+    const currentStatus = statusReq.recordset[0]?.Status;
+    if (!currentStatus) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
+    }
+
+    let isAuthorized = false;
+    if (req.user.role === 'Admin') {
+      isAuthorized = true;
+    } else if (finalRole === 'PRD' && currentStatus === 'Chờ phản hồi') {
+      isAuthorized = true;
+    } else if (finalRole === 'BOD' && currentStatus === 'PRD đã duyệt') {
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ success: false, error: `Bạn không có quyền phê duyệt đơn này ở trạng thái hiện tại (${currentStatus})` });
+    }
+
     const result = await pool.request()
       .input('ProjectId', sql.NVarChar(100), req.params.projectId)
       .input('ActorRole', sql.NVarChar(50), actorRole || null)
@@ -588,7 +815,34 @@ router.post('/:projectId/reject', authenticateToken, async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'Vui lòng nhập lý do từ chối' });
     }
     const pool = await getCsrPool();
+
+    // CHECK REJECT STATUS AND ROLE
+    const finalRole = actorRole || req.user.role;
+    
+    // Fetch current status
+    const statusReq = await pool.request()
+      .input('ProjectId', sql.NVarChar(50), req.params.projectId)
+      .query('SELECT Status FROM CSR_Projects WHERE Project_id = @ProjectId');
+    const currentStatus = statusReq.recordset[0]?.Status;
+    if (!currentStatus) {
+      return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
+    }
+
+    let isAuthorized = false;
+    if (req.user.role === 'Admin') {
+      isAuthorized = true;
+    } else if (finalRole === 'PRD' && currentStatus === 'Chờ phản hồi') {
+      isAuthorized = true;
+    } else if (finalRole === 'BOD' && currentStatus === 'PRD đã duyệt') {
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ success: false, error: `Bạn không có quyền từ chối đơn này ở trạng thái hiện tại (${currentStatus})` });
+    }
+
     const result = await pool.request()
+
       .input('ProjectId', sql.NVarChar(100), req.params.projectId)
       .input('ActorRole', sql.NVarChar(50), actorRole || null)
       .input('ActorMNV', sql.NVarChar(50), actorMNV || null)

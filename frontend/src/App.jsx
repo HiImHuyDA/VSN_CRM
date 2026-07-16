@@ -25,6 +25,7 @@ import FeedbackManagement from './pages/FeedbackManagement';
 import VehicleBookingList from './pages/vehicle/VehicleBookingList';
 import VehicleBookingNew from './pages/vehicle/VehicleBookingNew';
 import VehicleConfig from './pages/vehicle/VehicleConfig';
+import VehicleCalendar from './pages/vehicle/VehicleCalendar';
 import { getMyMenu } from './services/api';
 
 // Map MenuKey (không đổi dù đổi tên hiển thị) -> component tương ứng.
@@ -46,8 +47,10 @@ const MENU_KEY_COMPONENT = {
   'vehicle.dashboard': (auth) => <VehicleBookingList currentUser={auth} />,
   'vehicle.new': (auth) => <VehicleBookingNew />,
   'vehicle.config': (auth) => <VehicleConfig />,
+  'vehicle.calendar': (auth) => <VehicleCalendar />,
   'system-config.users': (auth) => <UserConfig />,
   'system-config.audit-logs': (auth) => <AuditLogs />,
+
   'system-config.menu-permissions': (auth) => <MenuPermissionsConfig />,
 };
 

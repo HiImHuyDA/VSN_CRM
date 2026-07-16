@@ -59,8 +59,9 @@ router.put('/:menuId/permissions', authorizeRoles('Admin'), async (req, res, nex
             return res.status(400).json({ success: false, error: 'roles phải là một mảng (có thể rỗng)' });
         }
 
-        const validRoles = ['Admin', 'BOD', 'PRD', 'User'];
+        const validRoles = ['Admin', 'BOD', 'PRD', 'User', 'TeamAdmin'];
         const rolesCsv = roles.filter(r => validRoles.includes(r)).join(',');
+
 
         const pool = await getCsrPool();
         await pool.request()

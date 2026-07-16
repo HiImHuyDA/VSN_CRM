@@ -1,6 +1,52 @@
 const express = require('express');
 const router = express.Router();
 const { getCsrPool, sql } = require('../config/database');
+const authenticateToken = require('../middleware/auth');
+
+async function checkConfigPermission(req, res, next) {
+  try {
+    const { role } = req.user;
+    if (role === 'Admin') {
+      return next();
+    }
+
+    // Determine menu key based on request path/body
+    let menuKey = 'guest.config';
+    if (req.path === '/locations' || req.path === '/locations/batch') {
+      menuKey = 'guest.config.locations';
+    } else if (req.path === '/task-configs' || req.path === '/task-configs/batch' || req.path === '/task-configs/copy') {
+      menuKey = 'guest.config.tasks';
+    } else if (req.path === '/lists' || req.path === '/lists/batch') {
+      const category = req.body.category || (req.body.rows?.[0]?.category);
+      if (['CustomerType', 'BrandName', 'PartnerName', 'SupplierName'].includes(category)) {
+        menuKey = 'guest.config.customers';
+      } else if (category === 'MeetingRoom') {
+        menuKey = 'guest.config.meeting-rooms';
+      } else if (['LunchMenu', 'DinnerRestaurant'].includes(category)) {
+        menuKey = 'guest.config.restaurants';
+      }
+    }
+
+    const pool = await getCsrPool();
+    const result = await pool.request()
+      .input('Role', sql.NVarChar(50), role)
+      .input('MenuKey', sql.NVarChar(100), menuKey)
+      .output('HasPermission', sql.Int)
+      .execute('usp_MenuPermission_Check');
+
+    if (result.output.HasPermission !== 1) {
+      return res.status(403).json({
+        success: false,
+        error: 'Bạn không có quyền thực hiện chức năng này'
+      });
+    }
+
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
 
 // GET /api/system-config/lists?category=CustomerType
 router.get('/lists', async (req, res, next) => {
@@ -44,7 +90,7 @@ router.get('/lists', async (req, res, next) => {
 });
 
 // POST /api/system-config/lists
-router.post('/lists', async (req, res, next) => {
+router.post('/lists', authenticateToken, checkConfigPermission, async (req, res, next) => {
   try {
     const { id, category, name, email, jsonData, isActive, statusId } = req.body;
     const pool = await getCsrPool();
@@ -75,7 +121,7 @@ router.get('/locations', async (req, res, next) => {
 });
 
 // POST /api/system-config/locations
-router.post('/locations', async (req, res, next) => {
+router.post('/locations', authenticateToken, checkConfigPermission, async (req, res, next) => {
   try {
     const { id, name, notificationEmails, isActive } = req.body;
     const pool = await getCsrPool();
@@ -104,7 +150,7 @@ router.get('/task-configs', async (req, res, next) => {
 });
 
 // POST /api/system-config/task-configs
-router.post('/task-configs', async (req, res, next) => {
+router.post('/task-configs', authenticateToken, checkConfigPermission, async (req, res, next) => {
   try {
     const { id, destination, taskName, description, assigneeName, assigneeEmail,
       supervisorName, supervisorEmail, isCompulsory, leadtimeDays, isActive } = req.body;
@@ -129,7 +175,7 @@ router.post('/task-configs', async (req, res, next) => {
 });
 
 // POST /api/system-config/task-configs/copy
-router.post('/task-configs/copy', async (req, res, next) => {
+router.post('/task-configs/copy', authenticateToken, checkConfigPermission, async (req, res, next) => {
   try {
     const { fromDest, toDest } = req.body;
     if (!fromDest || !toDest) return res.status(400).json({ success: false, error: 'Thiếu tham số' });
@@ -143,7 +189,7 @@ router.post('/task-configs/copy', async (req, res, next) => {
 });
 
 // POST /api/system-config/locations/batch — batch upsert locations from Excel
-router.post('/locations/batch', async (req, res, next) => {
+router.post('/locations/batch', authenticateToken, checkConfigPermission, async (req, res, next) => {
   try {
     const { rows } = req.body;
     if (!Array.isArray(rows) || rows.length === 0)
@@ -189,7 +235,7 @@ router.post('/locations/batch', async (req, res, next) => {
 });
 
 // POST /api/system-config/task-configs/batch — batch upsert task configs from Excel
-router.post('/task-configs/batch', async (req, res, next) => {
+router.post('/task-configs/batch', authenticateToken, checkConfigPermission, async (req, res, next) => {
   try {
     const { rows } = req.body;
     if (!Array.isArray(rows) || rows.length === 0)
@@ -253,7 +299,7 @@ router.post('/task-configs/batch', async (req, res, next) => {
 });
 
 // POST /api/system-config/lists/batch — batch upsert config lists (phòng họp, nhà hàng, khách hàng) from Excel
-router.post('/lists/batch', async (req, res, next) => {
+router.post('/lists/batch', authenticateToken, checkConfigPermission, async (req, res, next) => {
   try {
     const { rows, category } = req.body;
     if (!Array.isArray(rows) || rows.length === 0)

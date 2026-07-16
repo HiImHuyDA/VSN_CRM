@@ -62,7 +62,7 @@ async function sendFleetMail(toEmails, ccEmails, subject, htmlBody) {
     const url = `https://graph.microsoft.com/v1.0/users/${senderEmail}/sendMail`;
 
     const toRecipients = toEmails.map(e => ({ emailAddress: { address: e } }));
-    const ccRecipients = ccEmails.map(e => ({ emailAddress: { address: e } }));
+    const ccRecipients = (ccEmails || []).map(e => ({ emailAddress: { address: e } }));
 
     await axios.post(url, {
       message: {
@@ -85,7 +85,7 @@ async function sendFleetMail(toEmails, ccEmails, subject, htmlBody) {
 }
 
 /**
- * Supervisor Email Template Builder (based on provided image)
+ * Supervisor Email Template Builder
  */
 function buildSupervisorEmailHtml(booking, managerName) {
   const portalUrl = process.env.PORTAL_URL || 'http://crm.vietsuncorp.com.vn/';
@@ -144,22 +144,25 @@ function buildSupervisorEmailHtml(booking, managerName) {
 }
 
 /**
- * Dispatch / Allocated Vehicle Email Template Builder (based on provided image)
+ * Dispatch / Allocated Vehicle Email Template Builder (theo mẫu ảnh đính kèm)
  */
 function buildAllocationEmailHtml(booking) {
   const portalUrl = process.env.PORTAL_URL || 'http://crm.vietsuncorp.com.vn/';
   const detailLink = `${portalUrl}/vehicle?bookingId=${booking.Id}`;
 
+  const vehicleInfo = [booking.VehiclePlate, booking.VehicleBrand].filter(Boolean).join(' | ');
+  const driverInfo = [booking.DriverName, booking.DriverPhone].filter(Boolean).join(' | ');
+
   const rows = `
     <tr>
       <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${fmtDt(booking.DepartureTime).split(' ')[0]}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.Destination)}</td>
+      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.RequesterDept || booking.Destination)}</td>
       <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${booking.PassengerCount}</td>
       <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.RequesterName)}</td>
       <td style="border: 1px solid #e5e7eb; padding: 10px 12px;">${escHtml(booking.Purpose)}</td>
       <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${fmtDt(booking.DepartureTime).split(' ')[1]}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.VehiclePlate)} | ${escHtml(booking.VehicleBrand || '')}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.DriverName || '—')} | ${escHtml(booking.DriverPhone || '—')}</td>
+      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(vehicleInfo || '—')}</td>
+      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(driverInfo || '—')}</td>
       <td style="border: 1px solid #e5e7eb; padding: 10px 12px;">${escHtml(booking.AssignedNote || '—')}</td>
     </tr>
   `;
@@ -266,22 +269,31 @@ async function sendSupervisorApprovalToQueue(bookingInfo, pool) {
 
     console.log(`[Fleet Supervisor Queue] ✅ Added booking ${booking.BookingCode} for Supervisor: ${managerEmail}`);
 
-    // 3. Gửi email thông báo cho Giám sát (theo mẫu ảnh)
+    // 3. Gửi email thông báo cho Giám sát
     const subject = `Phê duyệt đăng ký đi công tác của ${booking.RequesterName}`;
     const emailHtml = buildSupervisorEmailHtml(booking, managerName);
-    await sendFleetMail([managerEmail.trim()], [booking.RequesterEmail], subject, emailHtml);
+    await sendFleetMail([managerEmail.trim()], [booking.RequesterEmail].filter(Boolean), subject, emailHtml);
     console.log(`[Fleet Supervisor Email] ✅ Sent notification email to: ${managerEmail}`);
   } catch (err) {
-    console.error(`[Fleet Supervisor Queue] ❌ Failed for booking ${booking.Id}:`, err.message);
+    console.error(`[Fleet Supervisor Queue] ❌ Failed for booking ${bookingInfo?.Id}:`, err.message);
   }
 }
 
 /**
  * Gửi yêu cầu duyệt cho Team Admin lên SharePoint Queue
  */
-async function sendTeamAdminApprovalToQueue(booking, pool) {
+async function sendTeamAdminApprovalToQueue(bookingInfo, pool) {
   try {
-    const bookingId = booking.Id;
+    const bookingId = bookingInfo.Id;
+
+    // Lấy thông tin chi tiết đầy đủ của booking từ CSDL
+    const bookingRes = await pool.request()
+      .input('Id', sql.Int, bookingId)
+      .execute('usp_Fleet_Booking_GetDetail');
+    const booking = bookingRes.recordset[0];
+    if (!booking) {
+      throw new Error(`Không tìm thấy booking ID: ${bookingId}`);
+    }
 
     // 1. Lấy danh sách email Team Admin
     let adminEmails = '';
@@ -327,7 +339,7 @@ async function sendTeamAdminApprovalToQueue(booking, pool) {
 
     console.log(`[Fleet TeamAdmin Queue] ✅ Added booking ${booking.BookingCode} for Team Admin: ${adminEmails}`);
   } catch (err) {
-    console.error(`[Fleet TeamAdmin Queue] ❌ Failed for booking ${booking.Id}:`, err.message);
+    console.error(`[Fleet TeamAdmin Queue] ❌ Failed for booking ${bookingInfo?.Id}:`, err.message);
   }
 }
 
@@ -434,9 +446,6 @@ async function syncFleetTeamAdminApprovalResults(pool) {
       const outcome = fields.ApprovalOutcome;
       const comments = fields.Comments || fields.TeamAdminComments || '';
 
-      // Đối với Team Admin duyệt nhanh, chúng ta chỉ thay đổi trạng thái sang 'Team Admin đã duyệt' hoặc 'Team Admin từ chối'.
-      // Lưu ý: Đối với Duyệt xe thực sự, Team Admin vẫn cần gán xe & tài xế trên web hoặc điền thông tin gán xe vào list kết quả để sync về.
-      // Nếu Teams sync gán xe, ta có thể parse VehicleId / DriverId từ fields.
       const vehicleId = fields.VehicleId ? Number(fields.VehicleId) : null;
       const driverId = fields.DriverId ? Number(fields.DriverId) : null;
       const assignedNote = fields.AssignedNote || '';
@@ -463,17 +472,34 @@ async function syncFleetTeamAdminApprovalResults(pool) {
         const updatedBooking = result.recordset?.[0];
         console.log(`[Fleet TeamAdmin Sync] Updated booking ${bookingId} to ${newStatus}`);
 
-        // Gửi email điều phối phương tiện khi Team Admin duyệt (theo mẫu ảnh)
-        if (newStatus === 'Team Admin đã duyệt' && updatedBooking && updatedBooking.RequesterEmail) {
-          const subject = `Điều phối phương tiện đi công tác cho ${updatedBooking.RequesterName}`;
-          const emailHtml = buildAllocationEmailHtml(updatedBooking);
-          // Gửi cho người đặt xe, đồng thời CC cho admin và tài xế
-          let ccEmails = [];
-          if (updatedBooking.DriverPhone) {
-            // lookup driver email if possible, or fallback to admin
+        // Gửi email điều phối phương tiện khi Team Admin duyệt
+        if (newStatus === 'Team Admin đã duyệt' && updatedBooking) {
+          // Fetch full detail để lấy đủ Attendees/AttendeesEmail
+          let fullBooking = updatedBooking;
+          try {
+            const detailRes = await pool.request()
+              .input('Id', sql.Int, Number(bookingId))
+              .execute('usp_Fleet_Booking_GetDetail');
+            if (detailRes.recordset?.[0]) fullBooking = detailRes.recordset[0];
+          } catch { /* dùng updatedBooking nếu lỗi */ }
+
+          const subject = `Điều phối phương tiện đi công tác cho ${fullBooking.RequesterName}`;
+          const emailHtml = buildAllocationEmailHtml(fullBooking);
+
+          // Xây dựng danh sách TO: requester + tất cả attendees có email
+          const toEmailSet = new Set();
+          if (fullBooking.RequesterEmail?.trim()) toEmailSet.add(fullBooking.RequesterEmail.trim());
+          if (fullBooking.AttendeesEmail) {
+            fullBooking.AttendeesEmail.split(/[;,]/)
+              .map(e => e.trim()).filter(Boolean)
+              .forEach(e => toEmailSet.add(e));
           }
-          await sendFleetMail([updatedBooking.RequesterEmail.trim()], ccEmails, subject, emailHtml);
-          console.log(`[Fleet TeamAdmin Email] ✅ Sent allocation/dispatch email to requester: ${updatedBooking.RequesterEmail}`);
+          const toEmails = [...toEmailSet];
+
+          if (toEmails.length > 0) {
+            await sendFleetMail(toEmails, [], subject, emailHtml);
+            console.log(`[Fleet TeamAdmin Email] ✅ Sent allocation email to: ${toEmails.join(', ')}`);
+          }
         }
 
         dbSuccess = true;
@@ -520,7 +546,7 @@ function startFleetApprovalSyncScheduler() {
         console.error('[Fleet Sync Scheduler] Initial team admin scan failed:', err.message);
       });
     });
-  }, 25000); // offset slightly
+  }, 25000);
 
   setInterval(async () => {
     try {
