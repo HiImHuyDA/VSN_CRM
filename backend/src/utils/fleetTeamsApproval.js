@@ -3,6 +3,7 @@
 const axios = require('axios');
 const { getCsrPool, sql } = require('../config/database');
 const { getAccessToken } = require('../config/sharepoint');
+const { sendFactoryNotificationEmail } = require('./fleetNotification');
 
 let isFleetSupervisorSyncing = false;
 let isFleetTeamAdminSyncing = false;
@@ -93,7 +94,6 @@ function buildSupervisorEmailHtml(booking, managerName) {
 
   const rows = [
     ['Đơn vị', booking.RequesterDept || '—'],
-    ['Phòng', '—'],
     ['Nội dung đi công tác', booking.Purpose],
     ['Địa điểm đi công tác', booking.Destination],
     ['Số người đi', String(booking.PassengerCount)],
@@ -150,22 +150,45 @@ function buildAllocationEmailHtml(booking) {
   const portalUrl = process.env.PORTAL_URL || 'http://crm.vietsuncorp.com.vn/';
   const detailLink = `${portalUrl}/vehicle?bookingId=${booking.Id}`;
 
-  const vehicleInfo = [booking.VehiclePlate, booking.VehicleBrand].filter(Boolean).join(' | ');
-  const driverInfo = [booking.DriverName, booking.DriverPhone].filter(Boolean).join(' | ');
+  let rows = '';
 
-  const rows = `
-    <tr>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${fmtDt(booking.DepartureTime).split(' ')[0]}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.RequesterDept || booking.Destination)}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${booking.PassengerCount}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.RequesterName)}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px;">${escHtml(booking.Purpose)}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${fmtDt(booking.DepartureTime).split(' ')[1]}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(vehicleInfo || '—')}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(driverInfo || '—')}</td>
-      <td style="border: 1px solid #e5e7eb; padding: 10px 12px;">${escHtml(booking.AssignedNote || '—')}</td>
-    </tr>
-  `;
+  if (booking.legs && booking.legs.length > 0) {
+    booking.legs.forEach((leg, index) => {
+      const legDate = index === 1 ? booking.ReturnTime : booking.DepartureTime;
+      const vehicleInfo = [leg.VehiclePlate, leg.VehicleBrand].filter(Boolean).join(' | ');
+      const driverInfo = [leg.DriverName, leg.DriverPhone].filter(Boolean).join(' | ');
+      
+      rows += `
+        <tr>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${fmtDt(legDate).split(' ')[0]}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(leg.Destination)}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${leg.PassengerCount}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(leg.Attendees || booking.RequesterName)}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px;">${escHtml(booking.Purpose)}${index === 1 ? ' (Về)' : ''}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${fmtDt(legDate).split(' ')[1]}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(vehicleInfo || leg.VehicleType || '—')}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(driverInfo || '—')}</td>
+          <td style="border: 1px solid #e5e7eb; padding: 10px 12px;">${escHtml(leg.Notes || '—')}</td>
+        </tr>
+      `;
+    });
+  } else {
+    const vehicleInfo = [booking.VehiclePlate, booking.VehicleBrand].filter(Boolean).join(' | ');
+    const driverInfo = [booking.DriverName, booking.DriverPhone].filter(Boolean).join(' | ');
+    rows = `
+      <tr>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${fmtDt(booking.DepartureTime).split(' ')[0]}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.Destination)}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${booking.PassengerCount}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(booking.Attendees || booking.RequesterName)}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px;">${escHtml(booking.Purpose)}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${fmtDt(booking.DepartureTime).split(' ')[1]}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(vehicleInfo || '—')}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px; text-align: center;">${escHtml(driverInfo || '—')}</td>
+        <td style="border: 1px solid #e5e7eb; padding: 10px 12px;">${escHtml(booking.AssignedNote || '—')}</td>
+      </tr>
+    `;
+  }
 
   return `
     <!DOCTYPE html>
@@ -248,6 +271,7 @@ async function sendSupervisorApprovalToQueue(bookingInfo, pool) {
         SupervisorEmail: managerEmail.trim(),
         RequesterName: booking.RequesterName,
         RequesterDept: booking.RequesterDept || '—',
+        MNV: booking.RequesterMNV || '—',
         PickupLocation: booking.PickupLocation,
         Destination: booking.Destination,
         DepartureTime: fmtDt(booking.DepartureTime),
@@ -276,6 +300,9 @@ async function sendSupervisorApprovalToQueue(bookingInfo, pool) {
     console.log(`[Fleet Supervisor Email] ✅ Sent notification email to: ${managerEmail}`);
   } catch (err) {
     console.error(`[Fleet Supervisor Queue] ❌ Failed for booking ${bookingInfo?.Id}:`, err.message);
+    if (err.response && err.response.data) {
+      console.error('[Fleet Supervisor Queue] Detailed Error:', JSON.stringify(err.response.data));
+    }
   }
 }
 
@@ -318,6 +345,7 @@ async function sendTeamAdminApprovalToQueue(bookingInfo, pool) {
         TeamAdminEmail: adminEmails.trim(),
         RequesterName: booking.RequesterName,
         RequesterDept: booking.RequesterDept || '—',
+        MNV: booking.RequesterMNV || '—',
         PickupLocation: booking.PickupLocation,
         Destination: booking.Destination,
         DepartureTime: fmtDt(booking.DepartureTime),
@@ -340,6 +368,9 @@ async function sendTeamAdminApprovalToQueue(bookingInfo, pool) {
     console.log(`[Fleet TeamAdmin Queue] ✅ Added booking ${booking.BookingCode} for Team Admin: ${adminEmails}`);
   } catch (err) {
     console.error(`[Fleet TeamAdmin Queue] ❌ Failed for booking ${bookingInfo?.Id}:`, err.message);
+    if (err.response && err.response.data) {
+      console.error('[Fleet TeamAdmin Queue] Detailed Error:', JSON.stringify(err.response.data));
+    }
   }
 }
 
@@ -480,7 +511,10 @@ async function syncFleetTeamAdminApprovalResults(pool) {
             const detailRes = await pool.request()
               .input('Id', sql.Int, Number(bookingId))
               .execute('usp_Fleet_Booking_GetDetail');
-            if (detailRes.recordset?.[0]) fullBooking = detailRes.recordset[0];
+            if (detailRes.recordsets[0]?.[0]) {
+              fullBooking = detailRes.recordsets[0][0];
+              fullBooking.legs = detailRes.recordsets[1] || [];
+            }
           } catch { /* dùng updatedBooking nếu lỗi */ }
 
           const subject = `Điều phối phương tiện đi công tác cho ${fullBooking.RequesterName}`;
@@ -500,6 +534,10 @@ async function syncFleetTeamAdminApprovalResults(pool) {
             await sendFleetMail(toEmails, [], subject, emailHtml);
             console.log(`[Fleet TeamAdmin Email] ✅ Sent allocation email to: ${toEmails.join(', ')}`);
           }
+
+          // Gửi email tự động cho Ban Quản lý Nhà máy nếu điểm đến là Nhà máy
+          sendFactoryNotificationEmail(fullBooking, pool)
+            .catch(err => console.error('[Fleet TeamAdmin Email] Factory email notification error:', err.message));
         }
 
         dbSuccess = true;
@@ -559,9 +597,65 @@ function startFleetApprovalSyncScheduler() {
   }, 30000);
 }
 
+/**
+ * Huỷ (xoá) các item Approval Queue Fleet đang chờ xử lý ứng với 1 BookingId,
+ * trên cả 2 list Queue (Giám sát, Team Admin).
+ * Dùng khi: (1) huỷ booking, hoặc (2) sửa booking - để tránh có 2 thẻ Teams sống
+ * cùng lúc cho cùng 1 booking (thẻ cũ + thẻ mới gửi lại sau khi sửa).
+ *
+ * LƯU Ý: giống hệt giới hạn của CSR - nếu thẻ đã được Power Automate gửi lên Teams rồi,
+ * xoá item Queue này không "thu hồi" được thẻ đã hiển thị. Nhưng nhờ guard OldStatus ở
+ * usp_Fleet_Booking_UpdateStatus (migration 92), nếu ai bấm vào thẻ cũ sau khi booking
+ * đã được xử lý/sửa, hệ thống sẽ từ chối an toàn, không ghi đè sai.
+ */
+async function cancelPendingFleetApprovalQueueItem(bookingId) {
+  const results = { supervisor: 0, teamAdmin: 0 };
+  try {
+    const accessToken = await getAccessToken();
+    const siteId = await getSharePointSiteId(accessToken);
+
+    const lists = [
+      { key: 'supervisor', name: process.env.SHAREPOINT_FLEET_SUPERVISOR_QUEUE_LIST_ID || 'Fleet_Supervisor_Approval_Queue' },
+      { key: 'teamAdmin',  name: process.env.SHAREPOINT_FLEET_TEAMADMIN_QUEUE_LIST_ID  || 'Fleet_TeamAdmin_Approval_Queue' },
+    ];
+
+    for (const list of lists) {
+      try {
+        const getUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${list.name}/items?$expand=fields&$filter=fields/BookingId eq '${bookingId}'`;
+        const res = await axios.get(getUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          timeout: 8000
+        });
+        const items = res.data.value || [];
+        for (const item of items) {
+          try {
+            await axios.delete(
+              `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${list.name}/items/${item.id}`,
+              { headers: { Authorization: `Bearer ${accessToken}` }, timeout: 8000 }
+            );
+            results[list.key]++;
+          } catch (delErr) {
+            console.error(`[Cancel Fleet Approval Queue] ❌ Failed to delete item ${item.id} from ${list.name}:`, delErr.message);
+          }
+        }
+      } catch (listErr) {
+        console.error(`[Cancel Fleet Approval Queue] ⚠️ Failed to query ${list.name} for booking ${bookingId}:`, listErr.message);
+      }
+    }
+
+    if (results.supervisor > 0 || results.teamAdmin > 0) {
+      console.log(`[Cancel Fleet Approval Queue] 🗑️ Removed pending queue items for booking ${bookingId}: Supervisor=${results.supervisor}, TeamAdmin=${results.teamAdmin}`);
+    }
+  } catch (err) {
+    console.error(`[Cancel Fleet Approval Queue] ❌ Error cancelling pending approval for booking ${bookingId}:`, err.message);
+  }
+  return results;
+}
+
 module.exports = {
   sendSupervisorApprovalToQueue,
   sendTeamAdminApprovalToQueue,
+  cancelPendingFleetApprovalQueueItem,
   syncFleetSupervisorApprovalResults,
   syncFleetTeamAdminApprovalResults,
   startFleetApprovalSyncScheduler,

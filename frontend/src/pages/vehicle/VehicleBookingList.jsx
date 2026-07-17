@@ -258,10 +258,8 @@ export default function VehicleBookingList({ currentUser }) {
                 <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Người đặt</th>
                 <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Điểm đón khách</th>
                 <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Điểm đến</th>
-                <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Giờ đi</th>
-                <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Số khách</th>
-                <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Xe phân công</th>
-                <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Tài xế</th>
+                <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Ngày đi</th>
+                <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Ngày về</th>
                 <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Trạng thái</th>
                 <th className="px-4 py-3 text-xs font-bold text-on-surface-variant sticky top-0 z-10 bg-surface-container">Ngày tạo</th>
               </tr>
@@ -269,7 +267,7 @@ export default function VehicleBookingList({ currentUser }) {
             <tbody className="divide-y divide-outline-variant">
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-8 text-on-surface-variant">
+                  <td colSpan={8} className="text-center py-8 text-on-surface-variant">
                     <div className="flex justify-center items-center gap-2">
                       <span className="material-symbols-outlined animate-spin text-[20px]">refresh</span>
                       Đang tải danh sách đặt xe...
@@ -278,7 +276,7 @@ export default function VehicleBookingList({ currentUser }) {
                 </tr>
               ) : bookings.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-8 text-on-surface-variant">
+                  <td colSpan={8} className="text-center py-8 text-on-surface-variant">
                     Không tìm thấy yêu cầu đặt xe nào.
                   </td>
                 </tr>
@@ -293,9 +291,7 @@ export default function VehicleBookingList({ currentUser }) {
                   <td className="px-4 py-3 text-sm text-on-surface-variant max-w-[180px] truncate" title={item.PickupLocation}>{item.PickupLocation}</td>
                   <td className="px-4 py-3 text-sm text-on-surface-variant max-w-[180px] truncate" title={item.Destination}>{item.Destination}</td>
                   <td className="px-4 py-3 text-sm text-on-surface-variant">{formatDate(item.DepartureTime, 'dd/MM/yyyy HH:mm')}</td>
-                  <td className="px-4 py-3 text-sm text-on-surface-variant">{item.PassengerCount} người</td>
-                  <td className="px-4 py-3 text-sm text-on-surface-variant">{item.VehiclePlate || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-on-surface-variant">{item.DriverName || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-on-surface-variant">{item.ReturnTime ? formatDate(item.ReturnTime, 'dd/MM/yyyy HH:mm') : '—'}</td>
                   <td className="px-4 py-3 text-sm">{getStatusBadge(item.Status)}</td>
                   <td className="px-4 py-3 text-xs text-on-surface-variant">{formatDate(item.CreatedAt, 'dd/MM/yyyy')}</td>
                 </tr>

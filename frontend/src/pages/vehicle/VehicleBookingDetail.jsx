@@ -25,6 +25,9 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
   const [selectedVehicleId, setSelectedVehicleId] = useState('');
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [assignedNote, setAssignedNote] = useState('');
+  const [selectedVehicleIdReturn, setSelectedVehicleIdReturn] = useState('');
+  const [selectedDriverIdReturn, setSelectedDriverIdReturn] = useState('');
+  const [assignedNoteReturn, setAssignedNoteReturn] = useState('');
 
   // Rejection Form states
   const [rejectedReason, setRejectedReason] = useState('');
@@ -84,9 +87,18 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
 
   const handleOpenApproveModal = () => {
     loadVehiclesAndDrivers();
-    setSelectedVehicleId('');
-    setSelectedDriverId('');
-    setAssignedNote('');
+    
+    const depLeg = booking?.legs && booking.legs.length > 0 ? booking.legs[0] : null;
+    const retLeg = booking?.legs && booking.legs.length > 1 ? booking.legs[1] : null;
+
+    setSelectedVehicleId(depLeg?.VehicleId ? String(depLeg.VehicleId) : '');
+    setSelectedDriverId(depLeg?.DriverId ? String(depLeg.DriverId) : '');
+    setAssignedNote(depLeg?.Notes || '');
+
+    setSelectedVehicleIdReturn(retLeg?.VehicleId ? String(retLeg.VehicleId) : '');
+    setSelectedDriverIdReturn(retLeg?.DriverId ? String(retLeg.DriverId) : '');
+    setAssignedNoteReturn(retLeg?.Notes || '');
+
     setShowApproveModal(true);
   };
 
@@ -111,7 +123,12 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
   };
 
   const handleApprove = async () => {
-    if (!selectedVehicleId) return toast.error('Vui lòng chọn xe phân công');
+    if (!selectedVehicleId) return toast.error('Vui lòng chọn xe phân công chuyến đi');
+
+    const hasReturn = booking.legs && booking.legs.length > 1;
+    if (hasReturn && !selectedVehicleIdReturn) {
+      return toast.error('Vui lòng chọn xe phân công chuyến về');
+    }
 
     setSubmitting(true);
     try {
@@ -119,7 +136,11 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
         newStatus: 'Team Admin đã duyệt',
         vehicleId: selectedVehicleId,
         driverId: selectedDriverId || null,
-        assignedNote: assignedNote
+        assignedNote: assignedNote,
+        
+        returnVehicleId: selectedVehicleIdReturn || null,
+        returnDriverId: selectedDriverIdReturn || null,
+        returnAssignedNote: assignedNoteReturn || null
       });
 
       if (res.success) {
@@ -332,6 +353,30 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
 
   const { supervisor, teamAdmin } = getApprovalDetails();
 
+  const getNotesDetails = () => {
+    if (!booking) return { notes: '', returnInfo: null };
+    const hasReturn = booking.legs && booking.legs.length > 1;
+    if (hasReturn) {
+      return {
+        notes: booking.legs[0].Notes || '',
+        returnInfo: {
+          isRoundTrip: true,
+          returnPassengerCount: booking.legs[1].PassengerCount,
+          returnVehicleType: booking.legs[1].VehicleType,
+          returnVehiclePlate: booking.legs[1].VehiclePlate,
+          returnVehicleBrand: booking.legs[1].VehicleBrand,
+          returnDriverName: booking.legs[1].DriverName,
+          returnDriverPhone: booking.legs[1].DriverPhone,
+          returnAssignedNote: booking.legs[1].Notes,
+          returnAttendees: booking.legs[1].Attendees,
+          returnStops: booking.legs[1].Stops ? JSON.parse(booking.legs[1].Stops) : []
+        }
+      };
+    }
+    return { notes: booking.Notes || '', returnInfo: null };
+  };
+  const { notes: userNotes, returnInfo } = getNotesDetails();
+
   const TAB = (key, label) => (
     <button
       className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
@@ -387,57 +432,28 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               {/* TAB 1: THÔNG TIN */}
               {activeTab === 'info' && (
                 <div className="space-y-6">
-                  {/* Thông tin thời gian và nhân sự */}
+                  {/* General Info */}
                   <div className="space-y-3">
-                    <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📅 Thời Gian & Nhân Sự</h4>
+                    <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">ℹ️ Thông Tin Chung</h4>
                     <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-xs text-on-surface-variant block">Giờ khởi hành:</span>
-                        <span className="font-semibold">{formatDate(booking.DepartureTime, 'dd/MM/yyyy HH:mm')}</span>
-                      </div>
-                      <div>
-                        <span className="text-xs text-on-surface-variant block">Giờ về (dự kiến):</span>
-                        <span className="font-semibold">{booking.ReturnTime ? formatDate(booking.ReturnTime, 'dd/MM/yyyy HH:mm') : 'Chưa đăng ký'}</span>
-                      </div>
                       <div>
                         <span className="text-xs text-on-surface-variant block">Người yêu cầu:</span>
                         <span className="font-semibold">{booking.RequesterName} ({booking.RequesterDept || 'Không rõ PB'})</span>
                       </div>
                       <div>
-                        <span className="text-xs text-on-surface-variant block">Số hành khách:</span>
-                        <span className="font-semibold">{booking.PassengerCount} người</span>
-                      </div>
-                      <div>
-                        <span className="text-xs text-on-surface-variant block">Loại phương tiện:</span>
-                        <span className="font-semibold">{booking.VehicleType || 'Xe công ty'}</span>
-                      </div>
-                      <div>
                         <span className="text-xs text-on-surface-variant block">Ngày tạo yêu cầu:</span>
                         <span className="font-semibold">{formatDate(booking.CreatedAt, 'dd/MM/yyyy HH:mm')}</span>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Người tham gia đi cùng */}
-                  {(booking.Attendees || booking.AttendeesEmail) && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">👥 Người Tham Gia Đi Cùng</h4>
-                      <div className="grid grid-cols-1 gap-2 text-sm">
-                        {booking.Attendees && (
-                          <div>
-                            <span className="text-xs text-on-surface-variant block">Danh sách người đi cùng:</span>
-                            <span className="font-semibold">{booking.Attendees}</span>
-                          </div>
-                        )}
-                        {booking.AttendeesEmail && (
-                          <div>
-                            <span className="text-xs text-on-surface-variant block">Email:</span>
-                            <span className="text-on-surface-variant break-all">{booking.AttendeesEmail}</span>
-                          </div>
-                        )}
+                      <div>
+                        <span className="text-xs text-on-surface-variant block">Hành trình:</span>
+                        <span className="font-semibold">{returnInfo ? 'Khứ hồi 🔁' : 'Một chiều ➡️'}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-on-surface-variant block">Độ ưu tiên:</span>
+                        <span className={`font-bold ${booking.Priority === 'VIP' ? 'text-amber-600' : booking.Priority === 'Khẩn' ? 'text-danger' : 'text-on-surface'}`}>{booking.Priority}</span>
                       </div>
                     </div>
-                  )}
+                  </div>
 
                   {/* Mục đích di chuyển */}
                   <div className="space-y-2">
@@ -448,33 +464,10 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
                   </div>
 
                   {/* Ghi chú thêm */}
-                  {booking.Notes && (
+                  {userNotes && (
                     <div className="space-y-2">
                       <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📝 Ghi Chú Yêu Cầu</h4>
-                      <p className="text-sm font-medium">{booking.Notes}</p>
-                    </div>
-                  )}
-
-                  {/* Thông tin phân công xe và tài xế (nếu đã duyệt) */}
-                  {['Đã duyệt', 'Team Admin đã duyệt', 'Hoàn thành'].includes(booking.Status) && (
-                    <div className="p-4 bg-green-50/50 border border-green-200 rounded-xl space-y-3">
-                      <h4 className="text-xs font-bold text-green-800 tracking-wider uppercase">🚗 Xe & Tài Xế Phân Công</h4>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-xs text-green-700 block">Xe phân phối:</span>
-                          <span className="font-bold text-green-900">{booking.VehiclePlate || 'Chưa rõ'} ({booking.VehicleBrand || 'Xe công tác'})</span>
-                        </div>
-                        <div>
-                          <span className="text-xs text-green-700 block">Tài xế lái xe:</span>
-                          <span className="font-bold text-green-900">{booking.DriverName || 'Tự lái'} {booking.DriverPhone ? `(${booking.DriverPhone})` : ''}</span>
-                        </div>
-                      </div>
-                      {booking.AssignedNote && (
-                        <div className="text-xs text-green-800 border-t border-green-200/60 pt-2">
-                          <span className="font-semibold block">Ghi chú điều phối:</span>
-                          <span>{booking.AssignedNote}</span>
-                        </div>
-                      )}
+                      <p className="text-sm font-medium">{userNotes}</p>
                     </div>
                   )}
 
@@ -501,43 +494,217 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               {/* TAB 2: LỘ TRÌNH */}
               {activeTab === 'route' && (
                 <div className="space-y-6">
-                  <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1">📍 Chi Tiết Lộ Trình</h4>
-                  <div className="relative pl-6 space-y-6 border-l-2 border-primary/20 ml-3 py-2">
-                    {/* Điểm đón */}
-                    <div className="relative">
-                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-success flex items-center justify-center border-2 border-white shadow-sm">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
-                      </span>
-                      <div className="text-sm">
-                        <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm đón khách (Pickup):</span>
-                        <span className="font-semibold text-on-surface text-base">{booking.PickupLocation}</span>
-                      </div>
-                    </div>
-
-                    {/* Các điểm dừng */}
-                    {parsedStops.map((stop, index) => (
-                      <div key={index} className="relative">
-                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center border-2 border-white shadow-sm">
+                  {/* Chiều đi */}
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[16px]">east</span>
+                      Chiều Đi: {booking.PickupLocation} ➔ {booking.Destination}
+                    </h4>
+                    <div className="relative pl-6 space-y-6 border-l-2 border-primary/20 ml-3 py-2">
+                      {/* Điểm đón */}
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-success flex items-center justify-center border-2 border-white shadow-sm">
                           <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
                         </span>
                         <div className="text-sm">
-                          <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm dừng {index + 1}:</span>
-                          <span className="font-medium text-on-surface">{stop}</span>
+                          <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm đón khách (Pickup):</span>
+                          <span className="font-semibold text-on-surface text-base">{booking.PickupLocation}</span>
                         </div>
                       </div>
-                    ))}
 
-                    {/* Điểm đến */}
-                    <div className="relative">
-                      <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center border-2 border-white shadow-sm">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
-                      </span>
-                      <div className="text-sm">
-                        <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm đến cuối (Destination):</span>
-                        <span className="font-bold text-on-surface text-base">{booking.Destination}</span>
+                      {/* Các điểm dừng */}
+                      {parsedStops.map((stop, index) => (
+                        <div key={index} className="relative">
+                          <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center border-2 border-white shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                          </span>
+                          <div className="text-sm">
+                            <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm dừng {index + 1}:</span>
+                            <span className="font-medium text-on-surface">{stop}</span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Điểm đến */}
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center border-2 border-white shadow-sm">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                        </span>
+                        <div className="text-sm">
+                          <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm đến cuối (Destination):</span>
+                          <span className="font-bold text-on-surface text-base">{booking.Destination}</span>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Chi tiết Chiều đi */}
+                    <div className="p-4 bg-gray-50 border border-border rounded-xl space-y-4">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-xs text-on-surface-variant block">Giờ khởi hành:</span>
+                          <span className="font-semibold">{formatDate(booking.DepartureTime, 'dd/MM/yyyy HH:mm')}</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-on-surface-variant block">Số hành khách:</span>
+                          <span className="font-semibold">{booking.PassengerCount} người</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-on-surface-variant block">Loại phương tiện:</span>
+                          <span className="font-semibold">{booking.VehicleType || 'Xe công ty'}</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-on-surface-variant block">Người đi cùng:</span>
+                          <span className="font-semibold truncate block" title={booking.Attendees || 'Không có'}>{booking.Attendees || 'Không có'}</span>
+                        </div>
+                      </div>
+
+                      {/* Phân công Chiều đi */}
+                      {['Đã duyệt', 'Team Admin đã duyệt', 'Hoàn thành'].includes(booking.Status) && (
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg mt-2 text-xs space-y-1.5">
+                          <div className="font-semibold text-green-800 uppercase tracking-wider">🚗 Xe & Tài Xế Chiều Đi:</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-green-700 block">Xe phân phối:</span>
+                              <span className="font-bold text-green-900">{booking.VehiclePlate || 'Chưa rõ'} ({booking.VehicleBrand || 'Xe công tác'})</span>
+                            </div>
+                            <div>
+                              <span className="text-green-700 block">Tài xế lái xe:</span>
+                              <span className="font-bold text-green-900">{booking.DriverName || 'Tự lái'} {booking.DriverPhone ? `(${booking.DriverPhone})` : ''}</span>
+                            </div>
+                          </div>
+                          {booking.AssignedNote && (
+                            <div className="text-green-800 border-t border-green-200/60 pt-1.5">
+                              <span className="font-semibold">Ghi chú điều phối:</span> {booking.AssignedNote}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Đề xuất Chiều đi */}
+                      {!['Đã duyệt', 'Team Admin đã duyệt', 'Hoàn thành'].includes(booking.Status) && booking.VehicleId && (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mt-2 text-xs space-y-1.5">
+                          <div className="font-semibold text-blue-800 uppercase tracking-wider">💡 Xe Đề Xuất Chiều Đi (Chờ duyệt):</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-blue-700 block">Xe đề xuất:</span>
+                              <span className="font-bold text-blue-900">{booking.VehiclePlate || 'Chưa rõ'} ({booking.VehicleBrand || 'Xe công tác'})</span>
+                            </div>
+                            <div>
+                              <span className="text-blue-700 block">Tài xế đề xuất:</span>
+                              <span className="font-bold text-blue-900">{booking.DriverName || 'Tự lái'} {booking.DriverPhone ? `(${booking.DriverPhone})` : ''}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Chiều về */}
+                  {returnInfo && (
+                    <div className="mt-6 border-t border-border pt-4 space-y-4">
+                      <h4 className="text-xs font-bold text-primary tracking-wider uppercase border-b border-border pb-1 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[16px]">west</span>
+                        Chiều Về: {booking.Destination} ➔ {booking.PickupLocation}
+                      </h4>
+                      <div className="relative pl-6 space-y-6 border-l-2 border-primary/20 ml-3 py-2">
+                        {/* Điểm đón của chiều về */}
+                        <div className="relative">
+                          <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-success flex items-center justify-center border-2 border-white shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                          </span>
+                          <div className="text-sm">
+                            <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm đón khách (Pickup):</span>
+                            <span className="font-semibold text-on-surface text-base">{booking.Destination}</span>
+                          </div>
+                        </div>
+
+                        {/* Các điểm dừng chiều về */}
+                        {(returnInfo.returnStops || []).map((stop, index) => (
+                          <div key={index} className="relative">
+                            <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center border-2 border-white shadow-sm">
+                              <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                            </span>
+                            <div className="text-sm">
+                              <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm dừng {index + 1}:</span>
+                              <span className="font-medium text-on-surface">{stop}</span>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Điểm đến của chiều về */}
+                        <div className="relative">
+                          <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center border-2 border-white shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white"></span>
+                          </span>
+                          <div className="text-sm">
+                            <span className="text-xs text-on-surface-variant block font-semibold uppercase tracking-wider">Điểm đến cuối (Destination):</span>
+                            <span className="font-bold text-on-surface text-base">{booking.PickupLocation}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Chi tiết Chiều về */}
+                      <div className="p-4 bg-gray-50 border border-border rounded-xl space-y-4">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-xs text-on-surface-variant block">Giờ về:</span>
+                            <span className="font-semibold">{booking.ReturnTime ? formatDate(booking.ReturnTime, 'dd/MM/yyyy HH:mm') : '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-on-surface-variant block">Số hành khách:</span>
+                            <span className="font-semibold">{returnInfo.returnPassengerCount} người</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-on-surface-variant block">Loại phương tiện:</span>
+                            <span className="font-semibold">{returnInfo.returnVehicleType || 'Xe công ty'}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-on-surface-variant block">Người đi cùng:</span>
+                            <span className="font-semibold truncate block" title={returnInfo.returnAttendees || 'Không có'}>{returnInfo.returnAttendees || 'Không có'}</span>
+                          </div>
+                        </div>
+
+                        {/* Phân công Chiều về */}
+                        {['Đã duyệt', 'Team Admin đã duyệt', 'Hoàn thành'].includes(booking.Status) && (
+                          <div className="p-3 bg-green-50 border border-green-200 rounded-lg mt-2 text-xs space-y-1.5">
+                            <div className="font-semibold text-green-800 uppercase tracking-wider">🚗 Xe & Tài Xế Chiều Về:</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <span className="text-green-700 block">Xe phân phối:</span>
+                                <span className="font-bold text-green-900">{returnInfo.returnVehiclePlate || 'Chưa rõ'} {returnInfo.returnVehicleBrand ? `(${returnInfo.returnVehicleBrand})` : ''}</span>
+                              </div>
+                              <div>
+                                <span className="text-green-700 block">Tài xế lái xe:</span>
+                                <span className="font-bold text-green-900">{returnInfo.returnDriverName || 'Tự lái'} {returnInfo.returnDriverPhone ? `(${returnInfo.returnDriverPhone})` : ''}</span>
+                              </div>
+                            </div>
+                            {returnInfo.returnAssignedNote && (
+                              <div className="text-green-800 border-t border-green-200/60 pt-1.5">
+                                <span className="font-semibold">Ghi chú điều phối:</span> {returnInfo.returnAssignedNote}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Đề xuất Chiều về */}
+                        {!['Đã duyệt', 'Team Admin đã duyệt', 'Hoàn thành'].includes(booking.Status) && returnInfo && returnInfo.returnVehiclePlate && (
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mt-2 text-xs space-y-1.5">
+                            <div className="font-semibold text-blue-800 uppercase tracking-wider">💡 Xe Đề Xuất Chiều Về (Chờ duyệt):</div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <span className="text-blue-700 block">Xe đề xuất:</span>
+                                <span className="font-bold text-blue-900">{returnInfo.returnVehiclePlate || 'Chưa rõ'} {returnInfo.returnVehicleBrand ? `(${returnInfo.returnVehicleBrand})` : ''}</span>
+                              </div>
+                              <div>
+                                <span className="text-blue-700 block">Tài xế đề xuất:</span>
+                                <span className="font-bold text-blue-900">{returnInfo.returnDriverName || 'Tự lái'} {returnInfo.returnDriverPhone ? `(${returnInfo.returnDriverPhone})` : ''}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -768,45 +935,94 @@ export default function VehicleBookingDetail({ bookingId, isOpen, onClose, onSta
               Duyệt & Phân Công Xe
             </h3>
 
-            <div className="space-y-4">
-              <div className="form-group">
-                <label className="text-xs font-semibold">Chọn Xe Công Tác <span className="text-danger">*</span></label>
-                <select
-                  className="w-full text-sm p-2 border border-border rounded-md"
-                  value={selectedVehicleId}
-                  onChange={e => setSelectedVehicleId(e.target.value)}
-                >
-                  <option value="">-- Chọn xe sẵn sàng --</option>
-                  {vehiclesList.map(v => (
-                    <option key={v.Id} value={v.Id}>{v.PlateNumber} - {v.Brand} {v.Model} ({v.Seats} chỗ)</option>
-                  ))}
-                </select>
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              {/* CHIỀU ĐI */}
+              <div className="p-3 bg-gray-50 border border-border rounded-xl space-y-3">
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">➔ Chiều đi (Khởi hành)</h4>
+                <div className="form-group">
+                  <label className="text-xs font-semibold">Chọn Xe Công Tác <span className="text-danger">*</span></label>
+                  <select
+                    className="w-full text-sm p-2 border border-border rounded-md"
+                    value={selectedVehicleId}
+                    onChange={e => setSelectedVehicleId(e.target.value)}
+                  >
+                    <option value="">-- Chọn xe sẵn sàng --</option>
+                    {vehiclesList.map(v => (
+                      <option key={v.Id} value={v.Id}>{v.PlateNumber} - {v.Brand} {v.Model} ({v.Seats} chỗ)</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="text-xs font-semibold">Chọn Tài Xế Phụ Trách</label>
+                  <select
+                    className="w-full text-sm p-2 border border-border rounded-md"
+                    value={selectedDriverId}
+                    onChange={e => setSelectedDriverId(e.target.value)}
+                  >
+                    <option value="">-- Tự lái / Không phân công --</option>
+                    {driversList.map(d => (
+                      <option key={d.Id} value={d.Id}>{d.FullName} ({d.Phone || 'Không có SĐT'}) - {d.LicenseClass || 'Không có bằng'}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="text-xs font-semibold">Ghi chú phân công chiều đi</label>
+                  <textarea
+                    rows="2"
+                    className="w-full text-sm p-2 border border-border rounded-md"
+                    placeholder="VD: Nhận chìa khóa xe tại tủ sảnh chính..."
+                    value={assignedNote}
+                    onChange={e => setAssignedNote(e.target.value)}
+                  />
+                </div>
               </div>
 
-              <div className="form-group">
-                <label className="text-xs font-semibold">Chọn Tài Xế Phụ Trách</label>
-                <select
-                  className="w-full text-sm p-2 border border-border rounded-md"
-                  value={selectedDriverId}
-                  onChange={e => setSelectedDriverId(e.target.value)}
-                >
-                  <option value="">-- Tự lái / Không phân công --</option>
-                  {driversList.map(d => (
-                    <option key={d.Id} value={d.Id}>{d.FullName} ({d.Phone || 'Không có SĐT'}) - {d.LicenseClass || 'Không có bằng'}</option>
-                  ))}
-                </select>
-              </div>
+              {/* CHIỀU VỀ */}
+              {returnInfo && (
+                <div className="p-3 bg-gray-50 border border-border rounded-xl space-y-3 mt-3">
+                  <h4 className="text-xs font-bold text-primary uppercase tracking-wider">➔ Chiều về (Khứ hồi)</h4>
+                  <div className="form-group">
+                    <label className="text-xs font-semibold">Chọn Xe Chiều Về <span className="text-danger">*</span></label>
+                    <select
+                      className="w-full text-sm p-2 border border-border rounded-md"
+                      value={selectedVehicleIdReturn}
+                      onChange={e => setSelectedVehicleIdReturn(e.target.value)}
+                    >
+                      <option value="">-- Chọn xe sẵn sàng --</option>
+                      {vehiclesList.map(v => (
+                        <option key={v.Id} value={v.Id}>{v.PlateNumber} - {v.Brand} {v.Model} ({v.Seats} chỗ)</option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="form-group">
-                <label className="text-xs font-semibold">Ghi chú phân công cho tài xế/người đi</label>
-                <textarea
-                  rows="2"
-                  className="w-full text-sm p-2 border border-border rounded-md"
-                  placeholder="VD: Nhận chìa khóa xe tại tủ sảnh chính..."
-                  value={assignedNote}
-                  onChange={e => setAssignedNote(e.target.value)}
-                />
-              </div>
+                  <div className="form-group">
+                    <label className="text-xs font-semibold">Chọn Tài Xế Chiều Về</label>
+                    <select
+                      className="w-full text-sm p-2 border border-border rounded-md"
+                      value={selectedDriverIdReturn}
+                      onChange={e => setSelectedDriverIdReturn(e.target.value)}
+                    >
+                      <option value="">-- Tự lái / Không phân công --</option>
+                      {driversList.map(d => (
+                        <option key={d.Id} value={d.Id}>{d.FullName} ({d.Phone || 'Không có SĐT'}) - {d.LicenseClass || 'Không có bằng'}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="text-xs font-semibold">Ghi chú phân công chiều về</label>
+                    <textarea
+                      rows="2"
+                      className="w-full text-sm p-2 border border-border rounded-md"
+                      placeholder="VD: Nhận chìa khóa xe tại tủ sảnh chính..."
+                      value={assignedNoteReturn}
+                      onChange={e => setAssignedNoteReturn(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 mt-6">

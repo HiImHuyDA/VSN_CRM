@@ -127,7 +127,7 @@ async function notifyAdminNewBooking(booking, pool) {
         if (!pool) pool = await getCsrPool();
 
         // Lay danh sach email Admin tu SP
-        const adminRes = await pool.request().execute('usp_Fleet_GetAdminEmails');
+        const adminRes = await pool.request().execute('usp_Fleet_GetTeamAdminEmails');
         const adminEmails = (adminRes.recordset || [])
             .map(r => r.Email?.trim())
             .filter(e => e && e.includes('@'));
@@ -170,7 +170,7 @@ async function notifyRequesterApproved(booking, pool) {
         if (!pool) pool = await getCsrPool();
 
         // Lay Admin emails de CC
-        const adminRes = await pool.request().execute('usp_Fleet_GetAdminEmails');
+        const adminRes = await pool.request().execute('usp_Fleet_GetTeamAdminEmails');
         const adminEmails = (adminRes.recordset || [])
             .map(r => r.Email?.trim())
             .filter(e => e && e.includes('@'));
@@ -214,8 +214,195 @@ async function notifyRequesterRejected(booking) {
     }
 }
 
+/**
+ * Email 4: Gửi email tự động cho Ban Quản Lý / Nhân Sự Nhà Máy nếu điểm đến là Nhà Máy
+ */
+async function sendFactoryNotificationEmail(booking, pool) {
+    try {
+        if (!booking || !booking.Destination) return;
+        if (!pool) pool = await getCsrPool();
+
+        const destClean = booking.Destination.trim();
+
+        // Query CSR_Locations to see if destination matches a location record
+        const locRes = await pool.request()
+            .input('DestName', sql.NVarChar(100), destClean)
+            .query(`
+                SELECT [Name], [NotificationEmails] 
+                FROM [dbo].[CSR_Locations] 
+                WHERE [StatusId] = 1 
+                  AND ([Name] = @DestName OR @DestName LIKE '%' + [Name] + '%' OR [Name] LIKE '%' + @DestName + '%')
+            `);
+
+        const matchedLoc = locRes.recordset?.[0];
+        if (!matchedLoc || !matchedLoc.NotificationEmails) {
+            console.log(`[Fleet Email] ℹ️ Destination "${destClean}" is not a Factory location with notification emails. Skipping factory email.`);
+            return;
+        }
+
+        const locName = matchedLoc.Name || destClean;
+        const factoryEmails = matchedLoc.NotificationEmails
+            .split(/[,;]/)
+            .map(e => e.trim())
+            .filter(e => e && e.includes('@'));
+
+        if (factoryEmails.length === 0) {
+            console.log(`[Fleet Email] ℹ️ Destination "${destClean}" has empty notification emails. Skipping factory email.`);
+            return;
+        }
+
+        // Build display name of factory
+        let factoryDisplayName = locName;
+        if (locName === 'VDC') factoryDisplayName = 'Nhà Máy Việt Đức';
+        else if (locName === 'VAC') factoryDisplayName = 'Nhà Máy VAC';
+        else if (locName === 'VSN-DN') factoryDisplayName = 'Nhà Máy VSN DN';
+        else if (locName === 'VSPY') factoryDisplayName = 'Nhà Máy VSPY';
+        else if (locName === 'VSPM') factoryDisplayName = 'Nhà Máy VSPM';
+        else if (locName === 'VSN-NT') factoryDisplayName = 'Nhà Máy VSN Ninh Thuận';
+        else if (!factoryDisplayName.toLowerCase().includes('nhà máy')) {
+            factoryDisplayName = `Nhà Máy ${factoryDisplayName}`;
+        }
+
+        // Department info
+        const rawDept = booking.RequesterDept || '';
+        let deptTitle = rawDept;
+        if (!deptTitle.toLowerCase().includes('phòng')) {
+            deptTitle = `Phòng ${deptTitle}`;
+        }
+
+        let unitName = 'HQ';
+        if (rawDept.toUpperCase().startsWith('VDC') || rawDept.toUpperCase().startsWith('VAC')) {
+            unitName = rawDept.slice(0, 3).toUpperCase();
+        }
+
+        // Subject & Header
+        const subject = `${deptTitle} công tác tại ${factoryDisplayName}`;
+
+        // Date formatting: dd/MM/yyyy
+        const formatShortDate = (dt) => {
+            if (!dt) return '—';
+            const d = new Date(dt);
+            if (isNaN(d.getTime())) return '—';
+            const day = String(d.getDate()).padStart(2, '0');
+            const mon = String(d.getMonth() + 1).padStart(2, '0');
+            return `${day}/${mon}/${d.getFullYear()}`;
+        };
+
+        const depDateStr = formatShortDate(booking.DepartureTime);
+        const retDateStr = formatShortDate(booking.ReturnTime || booking.DepartureTime);
+
+        // List of accompanying attendees or requester
+        const attendeesList = booking.Attendees || booking.RequesterName || '—';
+
+        // Notes
+        const notesStr = booking.Notes || booking.AssignedNote || '—';
+
+        // Vehicle Type
+        const vehicleTypeStr = booking.VehicleType || 'Xe công ty';
+
+        // Build HTML table matching user image exactly
+        const htmlBody = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family:'Segoe UI',Arial,sans-serif;line-height:1.6;color:#333;margin:0;padding:20px;">
+    <p style="margin-bottom:16px;">Kính gửi Ban Quản lý ${escHtml(factoryDisplayName)},</p>
+    <p style="margin-bottom:20px;">${escHtml(deptTitle)} sẽ có chuyến công tác tại ${escHtml(factoryDisplayName)}.</p>
+    
+    <table style="width:100%;max-width:650px;border-collapse:collapse;font-size:14px;margin-bottom:24px;border:1px solid #e0e0e0;">
+        <thead>
+            <tr style="background-color:#e67e22;color:#ffffff;text-align:left;">
+                <th style="padding:10px 14px;border:1px solid #d35400;width:30%;">Thông tin</th>
+                <th style="padding:10px 14px;border:1px solid #d35400;">Chi tiết</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Đơn vị</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(unitName)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Phòng</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(rawDept)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Nội dung đi công tác</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(booking.Purpose || '—')}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Địa điểm đi công tác</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(booking.Destination || '—')}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Số người đi</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(booking.PassengerCount || 1)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Danh sách đi công tác</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(attendeesList)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Ghi chú</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(notesStr)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Phương tiện</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(vehicleTypeStr)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Ngày đi</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(depDateStr)}</td>
+            </tr>
+            <tr>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;font-weight:600;background:#ffffff;color:#333;">Ngày về</td>
+                <td style="border:1px solid #e0e0e0;padding:10px 14px;color:#1d1d1d;">${escHtml(retDateStr)}</td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        // Determine recipients
+        // To: factory emails
+        const toEmails = Array.from(new Set(factoryEmails));
+
+        // Cc: requester email + attendees emails + Team Admin emails
+        const ccEmailsSet = new Set();
+        if (booking.RequesterEmail?.trim()) {
+            ccEmailsSet.add(booking.RequesterEmail.trim());
+        }
+        if (booking.AttendeesEmail) {
+            booking.AttendeesEmail.split(/[,;]/).forEach(e => {
+                const clean = e.trim();
+                if (clean && clean.includes('@')) ccEmailsSet.add(clean);
+            });
+        }
+
+        // Fetch Team Admin emails for CC
+        try {
+            const adminRes = await pool.request().execute('usp_Fleet_GetTeamAdminEmails');
+            (adminRes.recordset || []).forEach(r => {
+                const e = r.Email?.trim();
+                if (e && e.includes('@')) ccEmailsSet.add(e);
+            });
+        } catch (adminErr) {
+            console.warn('[Fleet Email] Failed to fetch TeamAdmin emails for factory CC:', adminErr.message);
+        }
+
+        // Remove any CC emails that are already in TO
+        toEmails.forEach(e => ccEmailsSet.delete(e));
+        const ccEmails = Array.from(ccEmailsSet);
+
+        await sendFleetEmail(toEmails, ccEmails, subject, htmlBody);
+        console.log(`[Fleet Email] ✅ Factory notification email sent to [${toEmails.join(', ')}] for booking ${booking.BookingCode}`);
+    } catch (err) {
+        console.error('[Fleet Email] ❌ Failed to send factory notification email:', err.message);
+    }
+}
+
 module.exports = {
     notifyAdminNewBooking,
     notifyRequesterApproved,
     notifyRequesterRejected,
+    sendFactoryNotificationEmail,
+    sendFleetEmail
 };

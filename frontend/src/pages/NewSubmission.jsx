@@ -285,6 +285,13 @@ export default function NewSubmission({ currentUser }) {
           toast.error(`Vui lòng chọn ngày tiếp đón (Ngày ${i + 1})`);
           return;
         }
+        {
+          const todayStr = new Date().toLocaleDateString('en-CA'); // yyyy-MM-dd theo giờ local
+          if (day.onboardDate < todayStr) {
+            toast.error(`Ngày tiếp đón (Ngày ${i + 1}) không được ở trong quá khứ`);
+            return;
+          }
+        }
         if (!day.destinations || day.destinations.length === 0) {
           toast.error(`Vui lòng chọn ít nhất 1 địa điểm cho Ngày ${i + 1}`);
           return;
@@ -561,6 +568,7 @@ export default function NewSubmission({ currentUser }) {
                       type="date"
                       className="input input-sm w-full mt-1"
                       value={day.onboardDate}
+                      min={new Date().toLocaleDateString('en-CA')}
                       onChange={(e) => updateDay(idx, { onboardDate: e.target.value })}
                       onClick={(e) => e.stopPropagation()}
                     />

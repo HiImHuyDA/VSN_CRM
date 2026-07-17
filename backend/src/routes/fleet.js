@@ -12,10 +12,12 @@ const {
     notifyAdminNewBooking,
     notifyRequesterApproved,
     notifyRequesterRejected,
+    sendFactoryNotificationEmail,
 } = require('../utils/fleetNotification');
 const {
     sendSupervisorApprovalToQueue,
-    sendTeamAdminApprovalToQueue
+    sendTeamAdminApprovalToQueue,
+    cancelPendingFleetApprovalQueueItem
 } = require('../utils/fleetTeamsApproval');
 
 // Toan bo endpoint yeu cau dang nhap
@@ -323,9 +325,16 @@ router.post('/bookings', async (req, res, next) => {
     try {
         const {
             pickupLocation, destination, stops,
-            departureTime, returnTime,
-            purpose, passengerCount = 1, priority = 'Bình thường', notes,
+            departureTime, returnTime, purpose,
+            passengerCount = 1, priority = 'Bình thường', notes,
             vehicleId, driverId, attendees, attendeesEmail, vehicleType,
+            
+            // Return leg
+            returnStops, returnPassengerCount = 1, returnPriority = 'Bình thường',
+            returnVehicleType = 'Xe công ty', returnAttendees, returnAttendeesEmail,
+            returnNotes, returnVehicleId, returnDriverId,
+            
+            parentBookingCode
         } = req.body;
 
         // Validation
@@ -333,6 +342,12 @@ router.post('/bookings', async (req, res, next) => {
         if (!pickupLocation?.trim()) errs.push('Điểm đón không được để trống');
         if (!destination?.trim())    errs.push('Điểm đến không được để trống');
         if (!departureTime)          errs.push('Thời gian khởi hành không được để trống');
+        else if (new Date(departureTime).getTime() < Date.now()) {
+            errs.push('Thời gian khởi hành không được ở trong quá khứ');
+        }
+        if (returnTime && departureTime && new Date(returnTime).getTime() < new Date(departureTime).getTime()) {
+            errs.push('Thời gian về không được trước thời gian khởi hành');
+        }
         if (!purpose?.trim())        errs.push('Mục đích không được để trống');
         if (passengerCount < 1)      errs.push('Số hành khách phải >= 1');
         if (errs.length > 0) return res.status(400).json({ success: false, errors: errs });
@@ -347,7 +362,8 @@ router.post('/bookings', async (req, res, next) => {
         if (req.user.mnv) {
             try {
                 const empRes = await pool.request()
-                    .query(`SELECT FullName, Email, Department FROM CSR_Employees WHERE MNV = '${req.user.mnv}' AND IsActive = 1`);
+                    .input('MNV', sql.NVarChar(50), req.user.mnv)
+                    .query('SELECT FullName, Email, Department FROM CSR_Employees WHERE MNV = @MNV');
                 if (empRes.recordset.length > 0) {
                     const emp = empRes.recordset[0];
                     requesterName  = emp.FullName  || requesterName;
@@ -362,20 +378,34 @@ router.post('/bookings', async (req, res, next) => {
             .input('RequesterName',  sql.NVarChar(200),   requesterName)
             .input('RequesterEmail', sql.NVarChar(200),   requesterEmail)
             .input('RequesterDept',  sql.NVarChar(200),   requesterDept)
-            .input('PickupLocation', sql.NVarChar(500),   pickupLocation.trim())
-            .input('Destination',    sql.NVarChar(500),   destination.trim())
-            .input('Stops',          sql.NVarChar(sql.MAX), stops ? JSON.stringify(stops) : null)
             .input('DepartureTime',  sql.DateTime,        new Date(departureTime))
             .input('ReturnTime',     sql.DateTime,        returnTime ? new Date(returnTime) : null)
             .input('Purpose',        sql.NVarChar(1000),  purpose.trim())
+            .input('ParentBookingCode', sql.NVarChar(30),  parentBookingCode || null)
+            
+            // Departure Leg
+            .input('PickupLocation', sql.NVarChar(500),   pickupLocation.trim())
+            .input('Destination',    sql.NVarChar(500),   destination.trim())
+            .input('Stops',          sql.NVarChar(sql.MAX), stops ? JSON.stringify(stops) : null)
             .input('PassengerCount', sql.Int,             Number(passengerCount))
             .input('Priority',       sql.NVarChar(20),    priority)
+            .input('VehicleType',    sql.NVarChar(100),   vehicleType || 'Xe công ty')
+            .input('Attendees',      sql.NVarChar(sql.MAX), attendees || null)
+            .input('AttendeesEmail', sql.NVarChar(sql.MAX), attendeesEmail || null)
             .input('Notes',          sql.NVarChar(1000),  notes || null)
             .input('VehicleId',      sql.Int,             vehicleId || null)
             .input('DriverId',       sql.Int,             driverId || null)
-            .input('Attendees',      sql.NVarChar(sql.MAX), attendees || null)
-            .input('AttendeesEmail', sql.NVarChar(sql.MAX), attendeesEmail || null)
-            .input('VehicleType',    sql.NVarChar(100),   vehicleType || 'Xe công ty')
+
+            // Return Leg
+            .input('ReturnStops',          sql.NVarChar(sql.MAX), returnStops ? JSON.stringify(returnStops) : null)
+            .input('ReturnPassengerCount', sql.Int,             Number(returnPassengerCount))
+            .input('ReturnPriority',       sql.NVarChar(20),    returnPriority)
+            .input('ReturnVehicleType',    sql.NVarChar(100),   returnVehicleType)
+            .input('ReturnAttendees',      sql.NVarChar(sql.MAX), returnAttendees || null)
+            .input('ReturnAttendeesEmail', sql.NVarChar(sql.MAX), returnAttendeesEmail || null)
+            .input('ReturnNotes',          sql.NVarChar(1000),  returnNotes || null)
+            .input('ReturnVehicleId',      sql.Int,             returnVehicleId || null)
+            .input('ReturnDriverId',       sql.Int,             returnDriverId || null)
             .execute('usp_Fleet_Booking_Create');
 
         const newBooking = result.recordset[0];
@@ -409,6 +439,9 @@ router.post('/bookings', async (req, res, next) => {
                 Attendees:      attendees,
                 AttendeesEmail: attendeesEmail
             }, pool).catch(err => console.error('[Fleet Teams] Queue error:', err.message));
+
+            // Thống báo Admin có đơn mới cần duyệt (Đã tắt theo yêu cầu người dùng)
+            // notifyAdminNewBooking(newBooking, pool).catch(err => console.error('[Fleet Email] notifyAdminNewBooking error:', err.message));
         }
 
         res.status(201).json({ success: true, data: newBooking });
@@ -425,19 +458,25 @@ router.put('/bookings/:id', async (req, res, next) => {
         const { id } = req.params;
         const {
             pickupLocation, destination, stops, departureTime, returnTime,
-            purpose, passengerCount, priority, notes, attendees, attendeesEmail, vehicleType
+            purpose, passengerCount = 1, priority = 'Bình thường', notes,
+            attendees, attendeesEmail, vehicleType, vehicleId, driverId,
+            
+            // Return leg
+            returnStops, returnPassengerCount = 1, returnPriority = 'Bình thường',
+            returnVehicleType = 'Xe công ty', returnAttendees, returnAttendeesEmail,
+            returnNotes, returnVehicleId, returnDriverId
         } = req.body;
 
         if (isNaN(Number(id))) return res.status(400).json({ success: false, error: 'ID không hợp lệ' });
 
         const pool = await getCsrPool();
 
-        // 1. Lấy chi tiết booking hiện tại để kiểm tra quyền và trạng thái
-        const detailRes = await pool.request()
+        // 1. Tải booking cũ để kiểm tra quyền
+        const bookingRes = await pool.request()
             .input('Id', sql.Int, Number(id))
             .execute('usp_Fleet_Booking_GetDetail');
-        const booking = detailRes.recordset[0];
-        if (!booking) return res.status(404).json({ success: false, error: 'Không tìm thấy booking' });
+        const booking = bookingRes.recordsets[0]?.[0];
+        if (!booking) return res.status(404).json({ success: false, error: 'Không tìm thấy booking cần sửa' });
 
         // Fetch current user's email
         const userEmpRes = await pool.request()
@@ -475,49 +514,57 @@ router.put('/bookings/:id', async (req, res, next) => {
             return res.status(400).json({ success: false, error: `Không thể chỉnh sửa đơn ở trạng thái hiện tại: ${booking.Status}` });
         }
 
-        // 2. Cập nhật booking
-        await pool.request()
+        if (departureTime && new Date(departureTime).getTime() < Date.now()) {
+            return res.status(400).json({ success: false, error: 'Thời gian khởi hành không được ở trong quá khứ' });
+        }
+        if (returnTime && departureTime && new Date(returnTime).getTime() < new Date(departureTime).getTime()) {
+            return res.status(400).json({ success: false, error: 'Thời gian về không được trước thời gian khởi hành' });
+        }
+
+        // 2. Cập nhật booking (tạo code mới)
+        const result = await pool.request()
             .input('Id',              sql.Int,             Number(id))
-            .input('PickupLocation',  sql.NVarChar(500),   pickupLocation.trim())
-            .input('Destination',     sql.NVarChar(500),   destination.trim())
-            .input('Stops',           sql.NVarChar(sql.MAX), stops ? JSON.stringify(stops) : null)
-            .input('DepartureTime',   sql.DateTime,        new Date(departureTime))
-            .input('ReturnTime',      sql.DateTime,        returnTime ? new Date(returnTime) : null)
-            .input('Purpose',         sql.NVarChar(1000),  purpose.trim())
-            .input('PassengerCount',  sql.Int,             Number(passengerCount))
-            .input('Priority',        sql.NVarChar(20),    priority)
-            .input('Notes',           sql.NVarChar(1000),  notes || null)
-            .input('Attendees',       sql.NVarChar(sql.MAX), attendees || null)
-            .input('AttendeesEmail',  sql.NVarChar(sql.MAX), attendeesEmail || null)
-            .input('VehicleType',     sql.NVarChar(100),   vehicleType || 'Xe công ty')
+            .input('RequesterMNV',   sql.NVarChar(50),    booking.RequesterMNV)
+            .input('RequesterName',  sql.NVarChar(200),   booking.RequesterName)
+            .input('RequesterEmail', sql.NVarChar(200),   booking.RequesterEmail)
+            .input('RequesterDept',  sql.NVarChar(200),   booking.RequesterDept)
+            .input('DepartureTime',  sql.DateTime,        new Date(departureTime))
+            .input('ReturnTime',     sql.DateTime,        returnTime ? new Date(returnTime) : null)
+            .input('Purpose',        sql.NVarChar(1000),  purpose.trim())
+            
+            // Departure Leg
+            .input('PickupLocation', sql.NVarChar(500),   pickupLocation.trim())
+            .input('Destination',    sql.NVarChar(500),   destination.trim())
+            .input('Stops',          sql.NVarChar(sql.MAX), stops ? JSON.stringify(stops) : null)
+            .input('PassengerCount', sql.Int,             Number(passengerCount))
+            .input('Priority',       sql.NVarChar(20),    priority)
+            .input('VehicleType',    sql.NVarChar(100),   vehicleType || 'Xe công ty')
+            .input('Attendees',      sql.NVarChar(sql.MAX), attendees || null)
+            .input('AttendeesEmail', sql.NVarChar(sql.MAX), attendeesEmail || null)
+            .input('Notes',          sql.NVarChar(1000),  notes || null)
+            .input('VehicleId',      sql.Int,             vehicleId || null)
+            .input('DriverId',       sql.Int,             driverId || null)
+
+            // Return Leg
+            .input('ReturnStops',          sql.NVarChar(sql.MAX), returnStops ? JSON.stringify(returnStops) : null)
+            .input('ReturnPassengerCount', sql.Int,             Number(returnPassengerCount))
+            .input('ReturnPriority',       sql.NVarChar(20),    returnPriority)
+            .input('ReturnVehicleType',    sql.NVarChar(100),   returnVehicleType)
+            .input('ReturnAttendees',      sql.NVarChar(sql.MAX), returnAttendees || null)
+            .input('ReturnAttendeesEmail', sql.NVarChar(sql.MAX), returnAttendeesEmail || null)
+            .input('ReturnNotes',          sql.NVarChar(1000),  returnNotes || null)
+            .input('ReturnVehicleId',      sql.Int,             returnVehicleId || null)
+            .input('ReturnDriverId',       sql.Int,             returnDriverId || null)
             .execute('usp_Fleet_Booking_Update');
 
-        // 3. Trạng thái sau update được reset về 'Chờ phản hồi' trong SP, ta gửi lại email / queue Teams cho giám sát
+        // 3. Nội dung đơn đã được cập nhật, GIỮ NGUYÊN Status hiện tại (đồng nhất với CSR) -
+        // không reset về 'Chờ phản hồi', không gửi lại yêu cầu duyệt Teams mới.
         const updatedBookingRes = await pool.request()
-            .input('Id', sql.Int, Number(id))
+            .input('Id', sql.Int, Number(newId))
             .execute('usp_Fleet_Booking_GetDetail');
-        const updatedBooking = updatedBookingRes.recordset[0];
+        const updatedBooking = updatedBookingRes.recordsets[0]?.[0];
 
-        sendSupervisorApprovalToQueue({
-            ...updatedBooking,
-            Id: updatedBooking.Id,
-            BookingCode: updatedBooking.BookingCode,
-            RequesterName:  updatedBooking.RequesterName,
-            RequesterEmail: updatedBooking.RequesterEmail,
-            RequesterDept:  updatedBooking.RequesterDept,
-            PickupLocation: updatedBooking.PickupLocation,
-            Destination:    updatedBooking.Destination,
-            DepartureTime:  updatedBooking.DepartureTime,
-            ReturnTime:     updatedBooking.ReturnTime,
-            Purpose:        updatedBooking.Purpose,
-            PassengerCount: updatedBooking.PassengerCount,
-            Priority:       updatedBooking.Priority,
-            Notes:          updatedBooking.Notes,
-            Attendees:      updatedBooking.Attendees,
-            AttendeesEmail: updatedBooking.AttendeesEmail
-        }, pool).catch(err => console.error('[Fleet Teams] Queue error after edit:', err.message));
-
-        res.json({ success: true, message: 'Cập nhật và gửi lại yêu cầu duyệt thành công', data: updatedBooking });
+        res.json({ success: true, message: 'Cập nhật đơn thành công', data: updatedBooking });
     } catch (err) { next(err); }
 });
 
@@ -535,8 +582,10 @@ router.get('/bookings/:id', async (req, res, next) => {
             .input('Id', sql.Int, Number(id))
             .execute('usp_Fleet_Booking_GetDetail');
 
-        const booking = result.recordset[0];
+        const booking = result.recordsets[0]?.[0];
         if (!booking) return res.status(404).json({ success: false, error: 'Không tìm thấy booking' });
+
+        booking.legs = result.recordsets[1] || [];
 
         // User thuong chi xem duoc don cua minh hoac cua nhan vien minh quan ly
         if (!['Admin', 'PRD', 'BOD', 'TeamAdmin'].includes(req.user.role)) {
@@ -643,7 +692,9 @@ router.put('/bookings/:id/status', async (req, res, next) => {
         const { id } = req.params;
         const {
             newStatus, vehicleId, driverId, assignedNote,
-            rejectedReason, cancelledReason,
+            rejectedReason, cancelledReason, notes,
+            
+            returnVehicleId, returnDriverId, returnAssignedNote
         } = req.body;
 
         if (isNaN(Number(id))) return res.status(400).json({ success: false, error: 'ID không hợp lệ' });
@@ -664,7 +715,7 @@ router.put('/bookings/:id/status', async (req, res, next) => {
         const detailRes = await pool.request()
             .input('Id', sql.Int, Number(id))
             .execute('usp_Fleet_Booking_GetDetail');
-        const booking = detailRes.recordset[0];
+        const booking = detailRes.recordsets[0]?.[0];
         if (!booking) return res.status(404).json({ success: false, error: 'Không tìm thấy booking' });
 
         // Fetch current user's email
@@ -710,17 +761,55 @@ router.put('/bookings/:id/status', async (req, res, next) => {
         }
 
         const result = await pool.request()
-            .input('Id',              sql.Int,            Number(id))
-            .input('NewStatus',       sql.NVarChar(50),   newStatus)
-            .input('ActorName',       sql.NVarChar(200),  req.user.fullName || req.user.mnv || null)
-            .input('VehicleId',       sql.Int,            vehicleId || null)
-            .input('DriverId',        sql.Int,            driverId || null)
-            .input('AssignedNote',    sql.NVarChar(1000), assignedNote || null)
-            .input('RejectedReason',  sql.NVarChar(1000), rejectedReason || null)
-            .input('CancelledReason', sql.NVarChar(1000), cancelledReason || null)
+            .input('Id',                  sql.Int,            Number(id))
+            .input('NewStatus',           sql.NVarChar(50),   newStatus)
+            .input('ActorName',           sql.NVarChar(200),  req.user.fullName || req.user.mnv || null)
+            
+            // Departure leg
+            .input('VehicleId',           sql.Int,            vehicleId || null)
+            .input('DriverId',            sql.Int,            driverId || null)
+            .input('AssignedNote',        sql.NVarChar(1000), assignedNote || null)
+            
+            // Return leg
+            .input('ReturnVehicleId',     sql.Int,            returnVehicleId || null)
+            .input('ReturnDriverId',      sql.Int,            returnDriverId || null)
+            .input('ReturnAssignedNote',  sql.NVarChar(1000), returnAssignedNote || null)
+            
+            // Rejections / Cancellations
+            .input('RejectedReason',      sql.NVarChar(1000), rejectedReason || null)
+            .input('CancelledReason',     sql.NVarChar(1000), cancelledReason || null)
             .execute('usp_Fleet_Booking_UpdateStatus');
 
-        const updatedBooking = result.recordset[0];
+        const updatedBooking = result.recordsets[0]?.[0];
+
+        // Nếu huỷ booking, dọn dẹp yêu cầu duyệt Giám sát/Team Admin đang chờ xử lý trên Queue
+        if (newStatus === 'Đã hủy' && updatedBooking) {
+            cancelPendingFleetApprovalQueueItem(id).catch(err => {
+                console.error('[Fleet Cancel] Failed to clean up pending approval queue:', err.message);
+            });
+        }
+
+        // Nếu Giám sát đã duyệt, gửi yêu cầu duyệt Teams cho Team Admin
+        if (newStatus === 'Giám sát đã duyệt' && updatedBooking) {
+            sendTeamAdminApprovalToQueue({
+                ...updatedBooking,
+                Id: updatedBooking.Id,
+                BookingCode: updatedBooking.BookingCode,
+                RequesterName:  updatedBooking.RequesterName,
+                RequesterEmail: updatedBooking.RequesterEmail,
+                RequesterDept:  updatedBooking.RequesterDept,
+                PickupLocation: updatedBooking.PickupLocation,
+                Destination:    updatedBooking.Destination,
+                DepartureTime:  updatedBooking.DepartureTime,
+                ReturnTime:     updatedBooking.ReturnTime,
+                Purpose:        updatedBooking.Purpose,
+                PassengerCount: updatedBooking.PassengerCount,
+                Priority:       updatedBooking.Priority,
+                Notes:          updatedBooking.Notes,
+                Attendees:      updatedBooking.Attendees,
+                AttendeesEmail: updatedBooking.AttendeesEmail
+            }, pool).catch(err => console.error('[Fleet Teams] sendTeamAdminApprovalToQueue error:', err.message));
+        }
 
         // Gui email thong bao (non-blocking)
         if (newStatus === 'Team Admin đã duyệt' && updatedBooking) {
@@ -737,6 +826,10 @@ router.put('/bookings/:id/status', async (req, res, next) => {
             }
             sendFleetMail([...toEmailSet], [], subject, emailHtml)
                 .catch(err => console.error('[Fleet] Dispatch allocation email error:', err.message));
+
+            // Gửi email tự động cho Ban Quản lý Nhà máy nếu điểm đến là Nhà máy
+            sendFactoryNotificationEmail(updatedBooking, pool)
+                .catch(err => console.error('[Fleet] Factory email notification error:', err.message));
         } else if (newStatus === 'Đã duyệt' && updatedBooking) {
             notifyRequesterApproved({ ...updatedBooking, ApprovedBy: req.user.fullName || req.user.mnv }, pool)
                 .catch(err => console.error('[Fleet] Approval email error:', err.message));

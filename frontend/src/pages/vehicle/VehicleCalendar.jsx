@@ -248,6 +248,17 @@ export default function VehicleCalendar() {
     });
   }, [rawBookings, filterDrivers, filterVehicles, filterRequesters, filterStatuses]);
 
+  // Helper: lấy chuỗi ngày yyyy-MM-dd theo GIỜ ĐỊA PHƯƠNG (không dùng toISOString() vì
+  // hàm đó luôn quy đổi về UTC, gây lệch 1 ngày với giờ Việt Nam UTC+7 - đây chính là
+  // nguyên nhân bug "tạo đơn ngày 16/07 nhưng lịch hiển thị ngày 17/07").
+  const toLocalDateStr = (d) => {
+    const dt = new Date(d);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   // Phân nhóm booking theo xe/tài xế và ngày
   const bookingsMap = useMemo(() => {
     const map = {};
@@ -256,9 +267,9 @@ export default function VehicleCalendar() {
       if (!map[key]) map[key] = {};
       
       weekDaysDates.forEach((date, index) => {
-        const dateStr = date.toISOString().split('T')[0];
-        const depDate = new Date(b.DepartureTime).toISOString().split('T')[0];
-        const retDate = b.ReturnTime ? new Date(b.ReturnTime).toISOString().split('T')[0] : depDate;
+        const dateStr = toLocalDateStr(date);
+        const depDate = toLocalDateStr(b.DepartureTime);
+        const retDate = b.ReturnTime ? toLocalDateStr(b.ReturnTime) : depDate;
         
         if (dateStr >= depDate && dateStr <= retDate) {
           if (!map[key][index]) map[key][index] = [];

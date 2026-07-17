@@ -606,11 +606,68 @@ function startPRDApprovalSyncScheduler() {
   }, 30000);
 }
 
+/**
+ * Huỷ (xoá) các item Approval Queue đang chờ xử lý (chưa được Power Automate/Teams xử lý xong)
+ * ứng với 1 ProjectId, trên cả 2 list Queue (PRD, BOD).
+ * Dùng khi người dùng huỷ/sửa đơn ở trạng thái "Chờ phản hồi" - để ngăn thẻ Teams được gửi
+ * (nếu Power Automate CHƯA kịp trigger) hoặc dọn dẹp hàng đợi (nếu đã trigger nhưng chưa xử lý).
+ *
+ * LƯU Ý QUAN TRỌNG: nếu thẻ Approval đã được gửi lên Teams của người duyệt rồi (Power Automate
+ * đã trigger), việc xoá item Queue này KHÔNG thể "thu hồi" thẻ đã hiển thị trong Teams - thẻ đó
+ * vẫn còn và có thể bị bấm. Tuy nhiên, nhờ guard OldStatus ở usp_ApproveSubmission/usp_RejectSubmission,
+ * nếu ai đó bấm vào thẻ cũ sau khi đơn đã bị huỷ/sửa, hệ thống sẽ từ chối an toàn (không ghi đè sai).
+ */
+async function cancelPendingApprovalQueueItem(projectId) {
+  const results = { prd: 0, bod: 0 };
+  try {
+    const accessToken = await getAccessToken();
+    const siteId = await getSharePointSiteId(accessToken);
+
+    const lists = [
+      { key: 'prd', name: process.env.SHAREPOINT_PRD_APPROVAL_QUEUE_LIST_ID || 'CSR_PRD_Approval_Queue' },
+      { key: 'bod', name: process.env.SHAREPOINT_BOD_APPROVAL_QUEUE_LIST_ID || 'CSR_BOD_Approval_Queue' },
+    ];
+
+    for (const list of lists) {
+      try {
+        const getUrl = `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${list.name}/items?$expand=fields&$filter=fields/ProjectId eq '${projectId}'`;
+        const res = await axios.get(getUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          timeout: 8000
+        });
+        const items = res.data.value || [];
+        for (const item of items) {
+          try {
+            await axios.delete(
+              `https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${list.name}/items/${item.id}`,
+              { headers: { Authorization: `Bearer ${accessToken}` }, timeout: 8000 }
+            );
+            results[list.key]++;
+          } catch (delErr) {
+            console.error(`[Cancel Approval Queue] ❌ Failed to delete item ${item.id} from ${list.name}:`, delErr.message);
+          }
+        }
+      } catch (listErr) {
+        // Không chặn luồng chính (huỷ/sửa đơn) nếu SharePoint lỗi - chỉ log để theo dõi
+        console.error(`[Cancel Approval Queue] ⚠️ Failed to query ${list.name} for project ${projectId}:`, listErr.message);
+      }
+    }
+
+    if (results.prd > 0 || results.bod > 0) {
+      console.log(`[Cancel Approval Queue] 🗑️ Removed pending queue items for project ${projectId}: PRD=${results.prd}, BOD=${results.bod}`);
+    }
+  } catch (err) {
+    console.error(`[Cancel Approval Queue] ❌ Error cancelling pending approval for project ${projectId}:`, err.message);
+  }
+  return results;
+}
+
 module.exports = {
   sendBODApprovalToSharePointQueue,
   syncBODApprovalResults,
   startBODApprovalSyncScheduler,
   sendPRDApprovalToSharePointQueue,
   syncPRDApprovalResults,
-  startPRDApprovalSyncScheduler
+  startPRDApprovalSyncScheduler,
+  cancelPendingApprovalQueueItem
 };

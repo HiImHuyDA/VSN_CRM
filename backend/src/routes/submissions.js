@@ -348,6 +348,32 @@ router.post('/', authenticateToken, async (req, res, next) => {
       }
     }
 
+    // Chặn ngày tiếp đón trong quá khứ (so sánh theo yyyy-MM-dd, không quan tâm giờ)
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    if (Array.isArray(tasks)) {
+      for (const t of tasks) {
+        if (t.onboardDate && String(t.onboardDate).slice(0, 10) < todayStr) {
+          return res.status(400).json({
+            success: false,
+            error: `Ngày tiếp đón (${t.onboardDate}) không được ở trong quá khứ`,
+          });
+        }
+      }
+    }
+    if (agendaJsonData) {
+      try {
+        const agendaDays = JSON.parse(agendaJsonData);
+        for (const d of agendaDays) {
+          if (d.date && String(d.date).slice(0, 10) < todayStr) {
+            return res.status(400).json({
+              success: false,
+              error: `Ngày tiếp đón (${d.date}) không được ở trong quá khứ`,
+            });
+          }
+        }
+      } catch { /* nếu parse lỗi thì bỏ qua, đã có validate khác xử lý */ }
+    }
+
     const pool = await getCsrPool();
     const result = await pool.request()
       .input('SubmitTimestamp', sql.BigInt, submitTimestamp || Date.now())
@@ -506,6 +532,32 @@ router.put('/:projectId', authenticateToken, async (req, res, next) => {
       }
     }
 
+    // Chặn ngày tiếp đón trong quá khứ (so sánh theo yyyy-MM-dd, không quan tâm giờ)
+    const todayStrEdit = new Date().toLocaleDateString('en-CA');
+    if (Array.isArray(tasks)) {
+      for (const t of tasks) {
+        if (t.onboardDate && String(t.onboardDate).slice(0, 10) < todayStrEdit) {
+          return res.status(400).json({
+            success: false,
+            error: `Ngày tiếp đón (${t.onboardDate}) không được ở trong quá khứ`,
+          });
+        }
+      }
+    }
+    if (agendaJsonData) {
+      try {
+        const agendaDays = JSON.parse(agendaJsonData);
+        for (const d of agendaDays) {
+          if (d.date && String(d.date).slice(0, 10) < todayStrEdit) {
+            return res.status(400).json({
+              success: false,
+              error: `Ngày tiếp đón (${d.date}) không được ở trong quá khứ`,
+            });
+          }
+        }
+      } catch { /* nếu parse lỗi thì bỏ qua, đã có validate khác xử lý */ }
+    }
+
     const result = await pool.request()
       .input('SubmitTimestamp', sql.BigInt, Date.now())
       .input('CustomerType', sql.NVarChar(20), customerType || oldSub.CustomerType)
@@ -600,7 +652,12 @@ router.post('/:projectId/cancel', authenticateToken, async (req, res, next) => {
     // Query status and submitter trước khi hủy để check quyền
     const oldSubReq = await pool.request()
       .input('ProjectId', sql.NVarChar(50), projectId)
-      .query('SELECT Status, SubmitterMNV FROM CSR_Projects WHERE Project_id = @ProjectId');
+      .query(`
+        SELECT s.TenTrangThai AS Status, p.SubmitterMNV
+        FROM CSR_Projects p
+        INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
+        WHERE p.Project_id = @ProjectId
+      `);
     const oldStatusSub = oldSubReq.recordset[0];
     if (!oldStatusSub) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
@@ -652,6 +709,15 @@ router.post('/:projectId/cancel', authenticateToken, async (req, res, next) => {
     }
 
     await logAuditAction('Huỷ đơn', actorMNV, `Huỷ đơn ${projectId}. Lý do: ${reason}`, row?.Project_id);
+
+    // Nếu đơn đang ở "Chờ phản hồi" (chưa có ai duyệt), dọn dẹp yêu cầu duyệt PRD/BOD
+    // đang chờ xử lý trên SharePoint Queue (best-effort, không chặn luồng chính nếu lỗi)
+    if (oldStatus === 'Chờ phản hồi') {
+      const { cancelPendingApprovalQueueItem } = require('../utils/bodApprovalSync');
+      cancelPendingApprovalQueueItem(projectId).catch(err => {
+        console.error('[Cancel Submission] Failed to clean up pending approval queue:', err.message);
+      });
+    }
 
     // Lưu lý do hủy vào CSR_ApprovalLogs để hiển thị trong lịch sử phê duyệt và trạng thái
     let actorName = 'Người dùng';
@@ -737,7 +803,12 @@ router.post('/:projectId/approve', authenticateToken, async (req, res, next) => 
     // Fetch current status
     const statusReq = await pool.request()
       .input('ProjectId', sql.NVarChar(50), req.params.projectId)
-      .query('SELECT Status FROM CSR_Projects WHERE Project_id = @ProjectId');
+      .query(`
+        SELECT s.TenTrangThai AS Status
+        FROM CSR_Projects p
+        INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
+        WHERE p.Project_id = @ProjectId
+      `);
     const currentStatus = statusReq.recordset[0]?.Status;
     if (!currentStatus) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
@@ -822,7 +893,12 @@ router.post('/:projectId/reject', authenticateToken, async (req, res, next) => {
     // Fetch current status
     const statusReq = await pool.request()
       .input('ProjectId', sql.NVarChar(50), req.params.projectId)
-      .query('SELECT Status FROM CSR_Projects WHERE Project_id = @ProjectId');
+      .query(`
+        SELECT s.TenTrangThai AS Status
+        FROM CSR_Projects p
+        INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
+        WHERE p.Project_id = @ProjectId
+      `);
     const currentStatus = statusReq.recordset[0]?.Status;
     if (!currentStatus) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
