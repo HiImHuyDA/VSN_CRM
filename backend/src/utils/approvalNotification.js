@@ -32,13 +32,13 @@ async function handleBODApprovalActions(projectId, pool) {
     }
 
     // Lấy thêm ParentId, Version, CustomerType từ database
-    const verRes = await pool.request()
+    const projRes = await pool.request()
       .input('ProjectId', sql.NVarChar(100), projectId)
-      .query('SELECT ParentId, Version, CustomerType FROM CSR_Projects WHERE Project_id = @ProjectId');
-    if (verRes.recordset.length > 0) {
-      project.ParentId = verRes.recordset[0].ParentId;
-      project.Version = verRes.recordset[0].Version;
-      project.CustomerType = verRes.recordset[0].CustomerType;
+      .execute('usp_Project_GetParentAndVersion');
+    if (projRes.recordset.length > 0) {
+      project.ParentId = projRes.recordset[0].ParentId;
+      project.Version = projRes.recordset[0].Version;
+      project.CustomerType = projRes.recordset[0].CustomerType;
     }
 
     // Lọc danh sách công việc đang hoạt động (IsActive)
@@ -106,7 +106,7 @@ async function sendApprovalEmail(project, tasks, pool) {
     if (project.SubmitterMNV) {
       const userRes = await pool.request()
         .input('MNV', sql.NVarChar(50), project.SubmitterMNV)
-        .query('SELECT Role, Department FROM CSR_Users WHERE MNV = @MNV');
+        .execute('usp_User_GetRoleAndDept');
       if (userRes.recordset.length > 0) {
         const u = userRes.recordset[0];
         teamName = u.Department || u.Role || 'PRD';
@@ -194,8 +194,8 @@ async function sendApprovalEmail(project, tasks, pool) {
     for (const dest of uniqueDestinationsForCc) {
       try {
         const locRes = await pool.request()
-          .input('DestName', sql.NVarChar(100), dest)
-          .query('SELECT NotificationEmails FROM CSR_Locations WHERE Name = @DestName AND StatusId = 1');
+          .input('Name', sql.NVarChar(100), dest)
+          .execute('usp_Location_GetNotificationEmails');
         if (locRes.recordset.length > 0 && locRes.recordset[0].NotificationEmails) {
           locRes.recordset[0].NotificationEmails.split(/[;,\s\n]+/).forEach(e => {
             const email = e.trim().toLowerCase();
@@ -358,7 +358,7 @@ async function sendApprovalEmail(project, tasks, pool) {
     if (!project.ParentId) {
       const verRes = await pool.request()
         .input('ProjectId', sql.NVarChar(100), project.Project_id)
-        .query('SELECT ParentId FROM CSR_Projects WHERE Project_id = @ProjectId');
+        .execute('usp_Project_GetParentAndVersion');
       if (verRes.recordset.length > 0) {
         project.ParentId = verRes.recordset[0].ParentId;
       } else {
@@ -636,10 +636,10 @@ async function handleProjectCancelNotification(projectId, reason, pool) {
     }
 
     // Lấy thêm ParentId từ database
-    const verRes = await pool.request()
+    const parentRes = await pool.request()
       .input('ProjectId', sql.NVarChar(100), projectId)
-      .query('SELECT ParentId FROM CSR_Projects WHERE Project_id = @ProjectId');
-    const parentId = verRes.recordset[0]?.ParentId || projectId;
+      .execute('usp_Project_GetParentAndVersion');
+    const parentId = parentRes.recordset[0]?.ParentId || projectId;
 
     // 1. Gửi email reply thông báo hủy đơn
     const senderEmail = process.env.SENDER_EMAIL;
@@ -686,8 +686,8 @@ async function handleProjectCancelNotification(projectId, reason, pool) {
       for (const dest of uniqueDestinations) {
         try {
           const locRes = await pool.request()
-            .input('DestName', sql.NVarChar(100), dest)
-            .query('SELECT NotificationEmails FROM CSR_Locations WHERE Name = @DestName AND StatusId = 1');
+            .input('Name', sql.NVarChar(100), dest)
+            .execute('usp_Location_GetNotificationEmails');
           if (locRes.recordset.length > 0 && locRes.recordset[0].NotificationEmails) {
             locRes.recordset[0].NotificationEmails.split(/[;,\s\n]+/).forEach(e => {
               const email = e.trim().toLowerCase();
@@ -830,7 +830,7 @@ async function sendApprovalEmailWithPrefix(project, tasks, customSubject, prefix
     if (project.SubmitterMNV) {
       const userRes = await pool.request()
         .input('MNV', sql.NVarChar(50), project.SubmitterMNV)
-        .query('SELECT Role, Department FROM CSR_Users WHERE MNV = @MNV');
+        .execute('usp_User_GetRoleAndDept');
       if (userRes.recordset.length > 0) {
         const u = userRes.recordset[0];
         teamName = u.Department || u.Role || 'PRD';
@@ -911,8 +911,8 @@ async function sendApprovalEmailWithPrefix(project, tasks, customSubject, prefix
     for (const dest of uniqueDestinationsForCc) {
       try {
         const locRes = await pool.request()
-          .input('DestName', sql.NVarChar(100), dest)
-          .query('SELECT NotificationEmails FROM CSR_Locations WHERE Name = @DestName AND StatusId = 1');
+          .input('Name', sql.NVarChar(100), dest)
+          .execute('usp_Location_GetNotificationEmails');
         if (locRes.recordset.length > 0 && locRes.recordset[0].NotificationEmails) {
           locRes.recordset[0].NotificationEmails.split(/[;,\s\n]+/).forEach(e => {
             const email = e.trim().toLowerCase();
@@ -1475,9 +1475,9 @@ async function handleVehicleTasksSyncAndNotification(project, tasks, pool) {
     if (project.Version > 1 && project.ParentId) {
       const prevVer = project.Version - 1;
       const prevRes = await pool.request()
-        .input('ParentId', sql.NVarChar(50), project.ParentId)
+        .input('ParentId', sql.NVarChar(100), project.ParentId)
         .input('Version', sql.Int, prevVer)
-        .query('SELECT Project_id, AgendaJsonData FROM CSR_Projects WHERE ParentId = @ParentId AND Version = @Version');
+        .execute('usp_Project_GetByParentAndVersion');
 
       const prevProject = prevRes.recordset?.[0];
       if (prevProject) {
@@ -1507,7 +1507,7 @@ async function handleVehicleTasksSyncAndNotification(project, tasks, pool) {
     if (project.SubmitterMNV) {
       const userRes = await pool.request()
         .input('MNV', sql.NVarChar(50), project.SubmitterMNV)
-        .query('SELECT Department FROM CSR_Users WHERE MNV = @MNV');
+        .execute('usp_User_GetRoleAndDept');
       if (userRes.recordset.length > 0) {
         submitterDept = userRes.recordset[0].Department || '';
       }
@@ -1619,7 +1619,7 @@ async function scheduleApprovalEmail(projectId, parentId, isEdit, activeTasks, p
     if (!minOnboardDate) {
       const projRes = await pool.request()
         .input('ProjectId', sql.NVarChar(100), projectId)
-        .query('SELECT AgendaJsonData FROM CSR_Projects WHERE Project_id = @ProjectId');
+        .execute('usp_Project_GetAgendaJsonData');
       if (projRes.recordset.length > 0 && projRes.recordset[0].AgendaJsonData) {
         try {
           const agendaJson = JSON.parse(projRes.recordset[0].AgendaJsonData);

@@ -11,7 +11,7 @@ async function logAuditAction(actionName, mnv, detail, projectId) {
     if (mnv && mnv !== 'TEAMS_BOD') {
       const userRes = await pool.request()
         .input('MNV', sql.NVarChar(50), mnv)
-        .query('SELECT Role, Department FROM CSR_Users WHERE MNV = @MNV');
+        .execute('usp_User_GetRoleAndDept');
       if (userRes.recordset.length > 0) {
         role = userRes.recordset[0].Role;
         dept = userRes.recordset[0].Department;

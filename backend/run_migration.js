@@ -1,4 +1,4 @@
-// run_migration.js — Chạy 1 lần để fix OnboardDates format
+// run_migration.js — Migration runner for CSR Web SQL Server Database
 const sql = require('mssql');
 const fs = require('fs');
 const path = require('path');
@@ -16,38 +16,60 @@ const config = {
   },
 };
 
-async function run() {
-  const pool = await new sql.ConnectionPool(config).connect();
-  console.log('Connected to SQL Server');
-
-  const migrationFile = process.argv[2];
-  if (!migrationFile) {
-    console.error('Usage: node run_migration.js <migration_file_name.sql>');
-    process.exit(1);
+async function runFile(pool, migrationFile) {
+  const filePath = path.join(__dirname, 'database', 'migrations', migrationFile);
+  if (!fs.existsSync(filePath)) {
+    console.error(`❌ File not found: ${migrationFile}`);
+    return;
   }
 
-  console.log('Running migration file:', migrationFile);
-  const sqlText = fs.readFileSync(
-    path.join(__dirname, 'database', 'migrations', migrationFile),
-    'utf8'
-  );
-
+  console.log(`\n🚀 [Migration] Running file: ${migrationFile}`);
+  const sqlText = fs.readFileSync(filePath, 'utf8');
 
   // Split by GO statements
   const batches = sqlText.split(/^\s*GO\s*$/gim).filter(b => b.trim());
 
-  for (const batch of batches) {
-    if (batch.trim()) {
-      console.log('Running batch:', batch.trim().substring(0, 80) + '...');
+  for (let i = 0; i < batches.length; i++) {
+    const batch = batches[i].trim();
+    if (batch) {
+      const preview = batch.replace(/\s+/g, ' ').substring(0, 80);
+      console.log(`   └─ Batch ${i + 1}/${batches.length}: ${preview}...`);
       await pool.request().query(batch);
     }
   }
 
-  console.log('Migration completed!');
+  console.log(`✅ [Migration] Completed file: ${migrationFile}`);
+}
+
+async function run() {
+  const pool = await new sql.ConnectionPool(config).connect();
+  console.log('✅ Connected to SQL Server database:', config.database);
+
+  const argFile = process.argv[2];
+
+  if (argFile) {
+    await runFile(pool, argFile);
+  } else {
+    // Run all files in database/migrations in alphabetical order
+    const migrationsDir = path.join(__dirname, 'database', 'migrations');
+    const files = fs.readdirSync(migrationsDir)
+      .filter(f => f.endsWith('.sql'))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+
+    console.log(`\n📦 Found ${files.length} migration file(s) in sequence:`);
+    files.forEach(f => console.log(`   - ${f}`));
+
+    for (const file of files) {
+      await runFile(pool, file);
+    }
+
+    console.log('\n🎉 ALL MIGRATIONS COMPLETED SUCCESSFULLY!');
+  }
+
   await pool.close();
 }
 
 run().catch(err => {
-  console.error('Migration failed:', err.message);
+  console.error('\n❌ Migration failed:', err.message);
   process.exit(1);
 });

@@ -363,7 +363,7 @@ router.post('/bookings', async (req, res, next) => {
             try {
                 const empRes = await pool.request()
                     .input('MNV', sql.NVarChar(50), req.user.mnv)
-                    .query('SELECT FullName, Email, Department FROM CSR_Employees WHERE MNV = @MNV');
+                    .execute('usp_Employee_GetEmailByMNV');
                 if (empRes.recordset.length > 0) {
                     const emp = empRes.recordset[0];
                     requesterName  = emp.FullName  || requesterName;
@@ -481,7 +481,7 @@ router.put('/bookings/:id', async (req, res, next) => {
         // Fetch current user's email
         const userEmpRes = await pool.request()
             .input('MNV', sql.NVarChar(50), req.user.mnv)
-            .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+            .execute('usp_Employee_GetEmailByMNV');
         const currentUserEmail = userEmpRes.recordset[0]?.Email;
 
         // Check if the current user is the manager of the booking creator
@@ -490,7 +490,7 @@ router.put('/bookings/:id', async (req, res, next) => {
             const managerCheckRes = await pool.request()
                 .input('CreatorMNV', sql.NVarChar(50), booking.RequesterMNV)
                 .input('ManagerEmail', sql.NVarChar(200), currentUserEmail)
-                .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+                .execute('usp_Employee_CheckIsManager');
             if (managerCheckRes.recordset.length > 0) {
                 isCreatorManager = true;
             }
@@ -560,7 +560,7 @@ router.put('/bookings/:id', async (req, res, next) => {
         // 3. Nội dung đơn đã được cập nhật, GIỮ NGUYÊN Status hiện tại (đồng nhất với CSR) -
         // không reset về 'Chờ phản hồi', không gửi lại yêu cầu duyệt Teams mới.
         const updatedBookingRes = await pool.request()
-            .input('Id', sql.Int, Number(newId))
+            .input('Id', sql.Int, Number(id))
             .execute('usp_Fleet_Booking_GetDetail');
         const updatedBooking = updatedBookingRes.recordsets[0]?.[0];
 
@@ -594,13 +594,13 @@ router.get('/bookings/:id', async (req, res, next) => {
                 // Check if manager of creator
                 const empRes = await pool.request()
                     .input('MNV', sql.NVarChar(50), req.user.mnv)
-                    .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+                    .execute('usp_Employee_GetEmailByMNV');
                 const actorEmail = empRes.recordset[0]?.Email;
                 if (actorEmail) {
                     const managerCheck = await pool.request()
                         .input('CreatorMNV', sql.NVarChar(50), booking.RequesterMNV)
                         .input('ManagerEmail', sql.NVarChar(200), actorEmail)
-                        .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+                        .execute('usp_Employee_CheckIsManager');
                     if (managerCheck.recordset.length > 0) {
                         isAllowed = true;
                     }
@@ -614,7 +614,7 @@ router.get('/bookings/:id', async (req, res, next) => {
         // Calculate actions and approval permissions
         const userEmpRes = await pool.request()
             .input('MNV', sql.NVarChar(50), req.user.mnv)
-            .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+            .execute('usp_Employee_GetEmailByMNV');
         const currentUserEmail = userEmpRes.recordset[0]?.Email;
 
         let isCreatorManager = false;
@@ -622,7 +622,7 @@ router.get('/bookings/:id', async (req, res, next) => {
             const managerCheckRes = await pool.request()
                 .input('CreatorMNV', sql.NVarChar(50), booking.RequesterMNV)
                 .input('ManagerEmail', sql.NVarChar(200), currentUserEmail)
-                .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+                .execute('usp_Employee_CheckIsManager');
             if (managerCheckRes.recordset.length > 0) {
                 isCreatorManager = true;
             }
@@ -721,7 +721,7 @@ router.put('/bookings/:id/status', async (req, res, next) => {
         // Fetch current user's email
         const userEmpRes = await pool.request()
             .input('MNV', sql.NVarChar(50), req.user.mnv)
-            .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+            .execute('usp_Employee_GetEmailByMNV');
         const currentUserEmail = userEmpRes.recordset[0]?.Email;
 
         // Check if the current user is the manager of the booking creator
@@ -730,7 +730,7 @@ router.put('/bookings/:id/status', async (req, res, next) => {
             const managerCheckRes = await pool.request()
                 .input('CreatorMNV', sql.NVarChar(50), booking.RequesterMNV)
                 .input('ManagerEmail', sql.NVarChar(200), currentUserEmail)
-                .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+                .execute('usp_Employee_CheckIsManager');
             if (managerCheckRes.recordset.length > 0) {
                 isCreatorManager = true;
             }
@@ -938,12 +938,11 @@ router.get('/geocode/suggest', async (req, res, next) => {
         }
 
         const pool = await getCsrPool();
-        const searchPattern = `%${trimmed}%`;
 
         // Step 1: Check database cache LocationMaster
         const cachedRes = await pool.request()
-            .input('SearchText', sql.NVarChar(500), searchPattern)
-            .query('SELECT DisplayName, Latitude, Longitude, Source FROM LocationMaster WHERE AddressQuery LIKE @SearchText');
+            .input('SearchText', sql.NVarChar(200), trimmed)
+            .execute('usp_LocationMaster_Search');
 
         const cachedList = cachedRes.recordset || [];
         const result = cachedList.map(item => ({
@@ -1044,7 +1043,7 @@ router.get('/geocode/resolve', async (req, res, next) => {
         if (cacheKey) {
             const cachedRes = await pool.request()
                 .input('Query', sql.NVarChar(500), cacheKey)
-                .query('SELECT DisplayName, Latitude, Longitude FROM LocationMaster WHERE AddressQuery = @Query');
+                .execute('usp_LocationMaster_GetByQuery');
             
             if (cachedRes.recordset && cachedRes.recordset.length > 0) {
                 const cached = cachedRes.recordset[0];
@@ -1117,21 +1116,13 @@ router.get('/geocode/resolve', async (req, res, next) => {
         if (lat !== null && lon !== null) {
             const queryToSave = cacheKey || resolvedAddress.trim().toLowerCase();
             try {
-                // Check once again to avoid PK duplication
-                const doubleCheck = await pool.request()
-                    .input('Query', sql.NVarChar(500), queryToSave)
-                    .query('SELECT Id FROM LocationMaster WHERE AddressQuery = @Query');
-                
-                if (doubleCheck.recordset.length === 0) {
-                    await pool.request()
-                        .input('AddressQuery', sql.NVarChar(500), queryToSave)
-                        .input('DisplayName',  sql.NVarChar(500), resolvedAddress)
-                        .input('Latitude',     sql.Decimal(12, 9), lat)
-                        .input('Longitude',    sql.Decimal(12, 9), lon)
-                        .input('Source',       sql.NVarChar(50),  sourceUsed)
-                        .query(`INSERT INTO LocationMaster (AddressQuery, DisplayName, Latitude, Longitude, Source)
-                                VALUES (@AddressQuery, @DisplayName, @Latitude, @Longitude, @Source)`);
-                }
+                await pool.request()
+                    .input('AddressQuery', sql.NVarChar(500), queryToSave)
+                    .input('DisplayName',  sql.NVarChar(500), resolvedAddress)
+                    .input('Latitude',     sql.Float, lat)
+                    .input('Longitude',    sql.Float, lon)
+                    .input('Source',       sql.NVarChar(100), sourceUsed)
+                    .execute('usp_LocationMaster_Upsert');
             } catch (dbErr) {
                 console.error('[Geocode Resolve] Saving cache failed:', dbErr.message);
             }

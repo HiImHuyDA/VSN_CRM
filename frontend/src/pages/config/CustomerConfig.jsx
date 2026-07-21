@@ -26,6 +26,14 @@ export default function CustomerConfig() {
   const [editReps, setEditReps] = useState([]);
   const [editStatusId, setEditStatusId] = useState(1);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('csr_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
+
   useEffect(() => {
     fetchCustomers(selectedType);
   }, [selectedType]);
@@ -33,7 +41,9 @@ export default function CustomerConfig() {
   const fetchCustomers = async (type) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/system-config/lists?category=${type}`);
+      const res = await fetch(`/api/system-config/lists?category=${type}`, {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (data.success) {
         setCustomers(data.data);
@@ -81,7 +91,7 @@ export default function CustomerConfig() {
       };
       const res = await fetch(window.location.origin + '/api/system-config/lists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -101,7 +111,7 @@ export default function CustomerConfig() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/lists/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ rows: rows.map(r => ({ ...r, name: r.name, category: r.customerType || selectedType })) })
       });
       const data = await res.json();

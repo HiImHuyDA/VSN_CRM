@@ -44,12 +44,22 @@ export default function RestaurantConfig() {
   const [editSpace, setEditSpace] = useState('');
   const [showImport, setShowImport] = useState(false);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('csr_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
+
   useEffect(() => { fetchItems(activeTab); }, [activeTab]);
 
   const fetchItems = async (cat) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/system-config/lists?category=${cat}`);
+      const res = await fetch(`/api/system-config/lists?category=${cat}`, {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (data.success) setItems(data.data);
     } catch { toast.error('Lỗi tải dữ liệu'); }
@@ -100,7 +110,7 @@ export default function RestaurantConfig() {
       }
       const res = await fetch(window.location.origin + '/api/system-config/lists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -116,7 +126,7 @@ export default function RestaurantConfig() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/lists/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ rows, category: activeTab })
       });
       const data = await res.json();

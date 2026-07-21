@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, Link } from 'react-router-dom';
 import { getMenuIcon } from '../../utils/menuIcons';
 
 export default function Sidebar({ menuTree, isCollapsed, setIsCollapsed, isMobile }) {
@@ -106,7 +106,15 @@ export default function Sidebar({ menuTree, isCollapsed, setIsCollapsed, isMobil
         <div className={`px-4 mb-8 flex items-center justify-center`}>
           {!isCollapsed && (
             <div className="flex items-center">
-              <img src="/logo.png" alt="Vietsun Logo" className="h-14 w-auto object-contain" />
+              <Link to="/"
+                className="inline-block transition-transform duration-200 hover:scale-105"
+              >
+                <img
+                  src="/logo.png"
+                  alt="Vietsun Logo"
+                  className="h-14 w-auto object-contain"
+                />
+              </Link>
             </div>
           )}
         </div>

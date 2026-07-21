@@ -249,7 +249,7 @@ async function sendSupervisorApprovalToQueue(bookingInfo, pool) {
     if (booking.RequesterMNV) {
       const empRes = await pool.request()
         .input('MNV', sql.NVarChar(50), booking.RequesterMNV)
-        .query('SELECT TOP 1 ManagerEmail FROM CSR_Employees WHERE MNV = @MNV AND StatusId = 1');
+        .execute('usp_Fleet_GetManagerEmailByMNV');
       if (empRes.recordset.length > 0) {
         managerEmail = empRes.recordset[0].ManagerEmail || '';
       }
@@ -325,7 +325,8 @@ async function sendTeamAdminApprovalToQueue(bookingInfo, pool) {
     // 1. Lấy danh sách email Team Admin
     let adminEmails = '';
     const adminRes = await pool.request()
-      .query("SELECT Email FROM CSR_Users WHERE Role = 'TeamAdmin' AND Email IS NOT NULL");
+      .input('Role', sql.NVarChar(50), 'TeamAdmin')
+      .execute('usp_User_GetEmailsByRole');
     const emails = adminRes.recordset.map(r => r.Email.trim()).filter(Boolean);
     if (emails.length > 0) {
       adminEmails = emails.join(';');

@@ -190,7 +190,7 @@ const PLACEHOLDERS = [
   { label: 'Địa điểm tiếp đón', value: '{{Địa Điểm Tiếp Đón}}' },
   { label: 'Ngày tiếp đón', value: '{{Ngày Tiếp Đón}}' },
   { label: 'Người gửi', value: '{{Người Gửi}}' },
-  { label: 'Lịch Agenda (bảng)', value: '{{Lịch Agenda}}' },
+  { label: 'Lịch Agenda', value: '{{Lịch Agenda}}' },
 ];
 
 const convertToChips = (html) => {
@@ -579,10 +579,24 @@ function SubjectEditor({ value, onChange }) {
   const handleInput = () => {
     if (editorRef.current) {
       let html = editorRef.current.innerHTML;
-      html = html.replace(/<div[^>]*>/gi, '').replace(/<\/div>/gi, '');
-      html = html.replace(/<br[^>]*>/gi, '');
-      const cleanText = convertFromChips(html);
-      onChange(cleanText);
+      // Convert chip spans back to placeholder text first
+      const withPlaceholders = convertFromChips(html);
+      // Strip ALL remaining HTML tags (span, div, br, etc.)
+      let plainText = withPlaceholders.replace(/<[^>]*>?/gm, '');
+      // Decode HTML entities
+      plainText = plainText
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&#8203;/g, '')   // zero-width space
+        .replace(/&#160;/g, ' ')   // non-breaking space entity
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\u200B/g, '')    // zero-width space unicode
+        .replace(/\s+/g, ' ')
+        .trim();
+      onChange(plainText);
     }
   };
 
@@ -1570,6 +1584,14 @@ export default function EmailCampaignConfig() {
   const [testTemplateId, setTestTemplateId] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('csr_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
+
   useEffect(() => { fetchFilters(); fetchTemplates(); }, []);
   useEffect(() => { fetchTemplates(); }, [filterPurpose, filterLocation, filterCustomer, filterStatus]);
 
@@ -1583,7 +1605,9 @@ export default function EmailCampaignConfig() {
   const fetchLogs = async () => {
     setLoadingLogs(true);
     try {
-      const res = await fetch(window.location.origin + '/api/email-campaigns/logs').then(r => r.json());
+      const res = await fetch(window.location.origin + '/api/email-campaigns/logs', {
+        headers: getAuthHeaders()
+      }).then(r => r.json());
       if (res.success) setLogs(res.data || []);
     } catch { toast.error('Lỗi tải nhật ký gửi email'); }
     finally { setLoadingLogs(false); }
@@ -1591,7 +1615,9 @@ export default function EmailCampaignConfig() {
 
   const fetchSubmissions = async () => {
     try {
-      const res = await fetch(window.location.origin + '/api/email-campaigns/brand-projects').then(r => r.json());
+      const res = await fetch(window.location.origin + '/api/email-campaigns/brand-projects', {
+        headers: getAuthHeaders()
+      }).then(r => r.json());
       if (res.success) setSubmissions(res.data || []);
     } catch { toast.error('Lỗi tải danh sách đơn tiếp đón Brand'); }
   };
@@ -1602,7 +1628,7 @@ export default function EmailCampaignConfig() {
     try {
       const res = await fetch(window.location.origin + '/api/email-campaigns/trigger-test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ projectId: testProjectId, templateId: testTemplateId || null })
       }).then(r => r.json());
 
@@ -1622,10 +1648,11 @@ export default function EmailCampaignConfig() {
 
   const fetchFilters = async () => {
     try {
+      const headers = getAuthHeaders();
       const [brandRes, partnerRes, locRes] = await Promise.all([
-        fetch(window.location.origin + '/api/system-config/lists?category=Brand').then(r => r.json()),
-        fetch(window.location.origin + '/api/system-config/lists?category=Partner').then(r => r.json()),
-        fetch(window.location.origin + '/api/system-config/locations').then(r => r.json()),
+        fetch(window.location.origin + '/api/system-config/lists?category=Brand', { headers }).then(r => r.json()),
+        fetch(window.location.origin + '/api/system-config/lists?category=Partner', { headers }).then(r => r.json()),
+        fetch(window.location.origin + '/api/system-config/locations', { headers }).then(r => r.json()),
       ]);
       setCustomerOptions([...(brandRes.data || []), ...(partnerRes.data || [])]);
       setLocationOptions(locRes.data || []);
@@ -1641,7 +1668,9 @@ export default function EmailCampaignConfig() {
       if (filterCustomer) params.append('customer', filterCustomer);
       if (filterStatus) params.append('isActive', filterStatus);
       if (searchText) params.append('search', searchText);
-      const res = await fetch(`/api/email-campaigns?${params}`);
+      const res = await fetch(`/api/email-campaigns?${params}`, {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (data.success) setTemplates(data.data);
     } catch { toast.error('Lỗi tải danh sách template'); }
@@ -1688,7 +1717,7 @@ export default function EmailCampaignConfig() {
 
   const handleCopy = async (id) => {
     try {
-      const res = await fetch(`/api/email-campaigns/${id}/copy`, { method: 'POST' }).then(r => r.json());
+      const res = await fetch(`/api/email-campaigns/${id}/copy`, { method: 'POST', headers: getAuthHeaders() }).then(r => r.json());
       if (res.success) { toast.success('Sao chép thành công!'); fetchTemplates(); }
       else toast.error(res.error || 'Lỗi sao chép');
     } catch { toast.error('Lỗi kết nối sao chép'); }
@@ -1729,12 +1758,21 @@ export default function EmailCampaignConfig() {
         customers: isAllCustomer ? [] : selectedCustomers.filter(c => c !== 'Chọn tất cả'),
         senderName: editSenderName, senderEmail: editSenderEmail,
         recipientName: useRecipientLookup ? 'Lookup' : editRecipientName,
-        recipientEmail: useRecipientLookup ? 'Lookup' : editRecipientEmail,
-        emailSubject: editSubject, emailBody: editBody, isActive: editActive,
+        emailSubject: editSubject
+          ? editSubject
+              .replace(/<[^>]*>?/gm, '')
+              .replace(/&nbsp;/gi, ' ')
+              .replace(/&#8203;/g, '')
+              .replace(/&#160;/g, ' ')
+              .replace(/\u200B/g, '')
+              .replace(/\s+/g, ' ')
+              .trim()
+          : '',
+        emailBody: editBody, isActive: editActive,
       };
       const res = await fetch(window.location.origin + '/api/email-campaigns', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       }).then(r => r.json());
       if (res.success) { toast.success('Lưu template thành công'); setShowPopup(false); fetchTemplates(); }

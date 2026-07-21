@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
 const { getCsrPool, sql } = require('../config/database');
 const { getAccessToken } = require('../config/sharepoint');
@@ -50,19 +52,7 @@ async function processCampaigns() {
     // 1. Tìm các lịch tiếp đón cách 7 ngày (Ngày tiếp đón đầu tiên của đơn là ngày đích)
     const projectRes = await pool.request()
       .input('TargetDate', sql.Date, targetDateStr)
-      .query(`
-        WITH EarliestOnboard AS (
-            SELECT Project_id, MIN(OnboardDate) as MinOnboardDate
-            FROM CSR_Tasks
-            WHERE StatusId = 1
-            GROUP BY Project_id
-        )
-        SELECT p.Project_id, p.CustomerName, p.CustomerType, p.SubmitterName, p.SubmitterEmail, p.MeetingTopic, p.GuestReps, eo.MinOnboardDate
-        FROM CSR_Projects p
-        JOIN EarliestOnboard eo ON p.Project_id = eo.Project_id
-        WHERE p.StatusId IN (5, 7)
-          AND eo.MinOnboardDate = @TargetDate
-      `);
+      .execute('usp_EmailCampaign_GetUpcomingProjects');
 
     const upcomingProjects = projectRes.recordset || [];
     if (upcomingProjects.length === 0) {
@@ -76,13 +66,7 @@ async function processCampaigns() {
     const todayStr = now.toISOString().split('T')[0];
     const templateRes = await pool.request()
       .input('Today', sql.Date, todayStr)
-      .query(`
-        SELECT * FROM CSR_EmailCampaignTemplates
-        WHERE IsActive = 1
-          AND Purpose IN (N'Chào đón khách', N'Mời sự kiện')
-          AND (StartDate IS NULL OR StartDate <= @Today)
-          AND (EndDate IS NULL OR EndDate >= @Today)
-      `);
+      .execute('usp_EmailCampaign_GetActiveTemplates');
 
     const activeTemplates = templateRes.recordset || [];
     if (activeTemplates.length === 0) {
@@ -106,7 +90,7 @@ async function processCampaigns() {
         // Kiểm tra xem đã gửi bất kỳ email campaign nào cho Project này chưa (để đảm bảo chỉ gửi 1 lần)
         const logCheck = await pool.request()
           .input('ProjectId', sql.NVarChar(100), project.Project_id)
-          .query('SELECT 1 FROM CSR_EmailCampaignLogs WHERE ProjectId = @ProjectId AND Status = \'Success\'');
+          .execute('usp_EmailCampaign_CheckLogSuccess');
 
         if (logCheck.recordset.length > 0) {
           console.log(`[Campaign Scheduler] ℹ️ Campaign already successfully sent for project ${project.Project_id}. Skipping.`);
@@ -116,7 +100,7 @@ async function processCampaigns() {
         // Lấy danh sách nhiệm vụ của đơn để kiểm tra địa điểm và ngày tiếp đón
         const tasksRes = await pool.request()
           .input('ProjectId', sql.NVarChar(100), project.Project_id)
-          .query('SELECT Destination, OnboardDate, MeetingStartTime, MeetingEndTime, MeetingRoom, MealOption FROM CSR_Tasks WHERE Project_id = @ProjectId AND StatusId = 1 ORDER BY OnboardDate ASC');
+          .execute('usp_EmailCampaign_GetProjectTasks');
         const projectTasks = tasksRes.recordset || [];
         const projectDestinations = projectTasks.map(t => t.Destination).filter(Boolean);
 
@@ -192,7 +176,7 @@ async function processCampaigns() {
               const custRes = await pool.request()
                 .input('Category', sql.NVarChar(50), project.CustomerType)
                 .input('Name', sql.NVarChar(200), project.CustomerName)
-                .query('SELECT JsonData, Email FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND StatusId = 1');
+                .execute('usp_GetCustomerConfigReps');
 
               const row = custRes.recordset?.[0];
               if (row) {
@@ -219,7 +203,7 @@ async function processCampaigns() {
             const custRes = await pool.request()
               .input('Category', sql.NVarChar(50), project.CustomerType)
               .input('Name', sql.NVarChar(200), project.CustomerName)
-              .query('SELECT JsonData FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND StatusId = 1');
+              .execute('usp_GetCustomerConfigReps');
 
             const customerJsonData = custRes.recordset?.[0]?.JsonData;
             if (customerJsonData) {
@@ -279,25 +263,22 @@ async function processCampaigns() {
             const d = new Date(t.OnboardDate);
             const dateStr = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
             const pickupTime = t.MeetingStartTime ? String(t.MeetingStartTime).slice(0, 5) : '';
-            const room = t.MeetingRoom || '';
             const dest = t.Destination || '';
             const meal = t.MealOption || '';
             return '<tr>' +
               '<td style="border:1px solid #e5e7eb;padding:8px 12px;white-space:nowrap">' + dateStr + '</td>' +
               '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + dest + '</td>' +
               '<td style="border:1px solid #e5e7eb;padding:8px 12px;white-space:nowrap">' + pickupTime + '</td>' +
-              '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + room + '</td>' +
               '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + meal + '</td>' +
               '</tr>';
           }).join('');
         const agendaTableP =
           '<table style="border-collapse:collapse;width:100%;font-size:13px;font-family:Segoe UI,sans-serif">' +
           '<thead><tr style="background:#f3f4f6">' +
-          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Ngày</th>' +
-          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Địa điểm</th>' +
-          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Giờ đón</th>' +
-          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Phòng họp</th>' +
-          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Bữa ăn / Tiệc</th>' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Onboard Date</th>' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Destination</th>' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Pick-up Time</th>' +
+          '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Restaurant</th>' +
           '</tr></thead>' +
           '<tbody>' + agendaRowsP + '</tbody></table>';
 
@@ -328,6 +309,9 @@ async function processCampaigns() {
           finalSubject = finalSubject.split(tag).join(val);
           finalBody = finalBody.split(tag).join(val);
         });
+
+        finalSubject = sanitizeEmailSubject(finalSubject);
+        finalBody = await processBodyImages(finalBody, pool);
 
         // 6. Gửi thư qua Graph API
         const finalSenderEmail = (matchedTemplate.SenderEmail && matchedTemplate.SenderEmail.trim()) || defaultSenderEmail;
@@ -393,13 +377,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
   // 1. Lấy thông tin Project
   const projectRes = await pool.request()
     .input('ProjectId', sql.NVarChar(100), projectId)
-    .query(`
-      SELECT p.Project_id, p.CustomerName, p.CustomerType, p.SubmitterName, p.SubmitterEmail, p.MeetingTopic, p.GuestReps,
-             s.TenTrangThai AS Status
-      FROM CSR_Projects p
-      INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
-      WHERE p.Project_id = @ProjectId
-    `);
+    .execute('usp_Submission_GetDetail');
 
   const project = projectRes.recordset?.[0];
   if (!project) {
@@ -409,7 +387,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
   // Lấy các nhiệm vụ của đơn để có Destination, OnboardDate và các trường Agenda
   const tasksRes = await pool.request()
     .input('ProjectId', sql.NVarChar(100), projectId)
-    .query('SELECT Destination, OnboardDate, MeetingStartTime, MeetingEndTime, MeetingRoom, MealOption FROM CSR_Tasks WHERE Project_id = @ProjectId AND StatusId = 1 ORDER BY OnboardDate ASC');
+    .execute('usp_EmailCampaign_GetProjectTasks');
   const projectTasks = tasksRes.recordset || [];
   const projectDestinations = projectTasks.map(t => t.Destination).filter(Boolean);
 
@@ -419,8 +397,8 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
   if (templateId) {
     // Nếu có truyền templateId cụ thể, lấy đúng template đó
     const tempRes = await pool.request()
-      .input('TemplateId', sql.Int, parseInt(templateId))
-      .query('SELECT * FROM CSR_EmailCampaignTemplates WHERE Id = @TemplateId');
+      .input('Id', sql.Int, parseInt(templateId))
+      .execute('usp_EmailTemplate_GetById');
     matchedTemplate = tempRes.recordset?.[0];
     if (!matchedTemplate) {
       throw new Error(`Không tìm thấy mẫu email với ID: ${templateId}`);
@@ -430,13 +408,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
     const todayStr = new Date().toISOString().split('T')[0];
     const templatesRes = await pool.request()
       .input('Today', sql.Date, todayStr)
-      .query(`
-        SELECT * FROM CSR_EmailCampaignTemplates
-        WHERE IsActive = 1
-          AND Purpose IN (N'Chào đón khách', N'Mời sự kiện')
-          AND (StartDate IS NULL OR StartDate <= @Today)
-          AND (EndDate IS NULL OR EndDate >= @Today)
-      `);
+      .execute('usp_EmailCampaign_GetActiveTemplates');
     const activeTemplates = templatesRes.recordset || [];
 
     for (const temp of activeTemplates) {
@@ -499,7 +471,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
         const custRes = await pool.request()
           .input('Category', sql.NVarChar(50), project.CustomerType)
           .input('Name', sql.NVarChar(200), project.CustomerName)
-          .query('SELECT JsonData, Email FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND StatusId = 1');
+          .execute('usp_GetCustomerConfigReps');
 
         const row = custRes.recordset?.[0];
         if (row) {
@@ -526,7 +498,7 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
       const custRes = await pool.request()
         .input('Category', sql.NVarChar(50), project.CustomerType)
         .input('Name', sql.NVarChar(200), project.CustomerName)
-        .query('SELECT JsonData FROM CSR_ConfigLists WHERE Category = @Category AND Name = @Name AND StatusId = 1');
+        .execute('usp_GetCustomerConfigReps');
 
       const customerJsonData = custRes.recordset?.[0]?.JsonData;
       if (customerJsonData) {
@@ -580,14 +552,12 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
       const d = new Date(t.OnboardDate);
       const dateStr = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
       const pickupTime = t.MeetingStartTime ? String(t.MeetingStartTime).slice(0, 5) : '';
-      const room = t.MeetingRoom || '';
       const dest = t.Destination || '';
       const meal = t.MealOption || '';
       return '<tr>' +
         '<td style="border:1px solid #e5e7eb;padding:8px 12px;white-space:nowrap">' + dateStr + '</td>' +
         '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + dest + '</td>' +
         '<td style="border:1px solid #e5e7eb;padding:8px 12px;white-space:nowrap">' + pickupTime + '</td>' +
-        '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + room + '</td>' +
         '<td style="border:1px solid #e5e7eb;padding:8px 12px">' + meal + '</td>' +
         '</tr>';
     }).join('');
@@ -595,11 +565,10 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
   const agendaTable =
     '<table style="border-collapse:collapse;width:100%;font-size:13px;font-family:Segoe UI,sans-serif">' +
     '<thead><tr style="background:#f3f4f6">' +
-    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Ngày</th>' +
-    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Địa điểm</th>' +
-    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Giờ đón</th>' +
-    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Phòng họp</th>' +
-    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Bữa ăn / Tiệc</th>' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Onboard Date</th>' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Destination</th>' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Pick-up Time</th>' +
+    '<th style="border:1px solid #e5e7eb;padding:8px 12px;text-align:left">Restaurant</th>' +
     '</tr></thead>' +
     '<tbody>' + agendaRows + '</tbody></table>';
 
@@ -625,6 +594,9 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
     finalSubject = finalSubject.split(tag).join(val);
     finalBody = finalBody.split(tag).join(val);
   });
+
+  finalSubject = sanitizeEmailSubject(finalSubject);
+  finalBody = await processBodyImages(finalBody, pool);
 
   // 6. Gửi Graph API
   const accessToken = await getAccessToken();
@@ -675,8 +647,146 @@ async function sendSingleCampaignEmail(projectId, templateId = null) {
   }
 }
 
+/**
+ * Làm sạch tiêu đề email: loại bỏ tất cả thẻ HTML và decode các thực thể HTML (HTML entities)
+ */
+function sanitizeEmailSubject(subjectStr) {
+  if (!subjectStr) return '';
+  return String(subjectStr)
+    .replace(/<[^>]*>?/gm, '')     // Strip all HTML tags
+    .replace(/&nbsp;/gi, ' ')      // Non-breaking space entity
+    .replace(/&#160;/g, ' ')       // Non-breaking space numeric
+    .replace(/&#8203;/g, '')       // Zero-width space numeric
+    .replace(/\u200B/g, '')        // Zero-width space unicode
+    .replace(/&amp;/gi, '&')       // Ampersand
+    .replace(/&lt;/gi, '<')        // Less than
+    .replace(/&gt;/gi, '>')        // Greater than
+    .replace(/&quot;/gi, '"')      // Double quote
+    .replace(/&#39;/gi, "'")       // Single quote
+    .replace(/&#x200B;/gi, '')     // Zero-width space hex
+    .replace(/\s+/g, ' ')          // Collapse whitespace
+    .trim();
+}
+
+/**
+ * Xử lý hình ảnh trong nội dung Email:
+ * Tự động chuyển đổi các thẻ <img src="..."> tương đối (/api/files/:id, /uploads/...)
+ * thành dạng Base64 Data URI (data:image/...;base64,...) để đảm bảo
+ * ứng dụng Email (Outlook, Gmail...) luôn tải và hiển thị hình ảnh 100% thành công.
+ */
+async function processBodyImages(htmlBody, pool) {
+  if (!htmlBody) return '';
+
+  const imgRegex = /<img\s+[^>]*src=["']([^"']+)["'][^>]*>/gi;
+  let match;
+  let processedHtml = htmlBody;
+  const srcMatches = [];
+
+  while ((match = imgRegex.exec(htmlBody)) !== null) {
+    srcMatches.push(match[1]);
+  }
+
+  if (srcMatches.length === 0) return htmlBody;
+
+  const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+  const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+
+  for (const src of srcMatches) {
+    try {
+      // Skip already-inlined data URIs
+      if (src.startsWith('data:image/')) continue;
+
+      // 1. Check if src matches /api/files/:id (relative or absolute URL)
+      const fileIdMatch = src.match(/\/api\/files\/(\d+)/i);
+      if (fileIdMatch) {
+        const fileId = parseInt(fileIdMatch[1]);
+        if (pool) {
+          try {
+            const fileRes = await pool.request()
+              .input('Id', sql.Int, fileId)
+              .execute('usp_GetUploadedFileById');
+
+            const fileRec = fileRes.recordset?.[0];
+            if (fileRec && fileRec.file_path) {
+              // Resolve path to handle relative/absolute correctly on Windows
+              const resolvedPath = path.resolve(fileRec.file_path);
+              if (fs.existsSync(resolvedPath)) {
+                const fileBuf = fs.readFileSync(resolvedPath);
+                const base64Data = fileBuf.toString('base64');
+                const mime = fileRec.mime_type || 'image/jpeg';
+                const dataUri = `data:${mime};base64,${base64Data}`;
+                processedHtml = processedHtml.split(src).join(dataUri);
+                console.log(`[Campaign Image] ✅ Converted /api/files/${fileId} to inline Base64 (${fileBuf.length} bytes).`);
+                continue;
+              } else {
+                console.warn(`[Campaign Image] ⚠️ File DB record found for ID ${fileId} but physical file missing at: ${resolvedPath}`);
+              }
+            } else {
+              console.warn(`[Campaign Image] ⚠️ No DB record found for file ID ${fileId}`);
+            }
+          } catch (dbErr) {
+            console.error(`[Campaign Image] ❌ DB error looking up file ID ${fileId}:`, dbErr.message);
+          }
+        }
+
+        // Fallback: If base64 failed, replace with public-facing URL using FRONTEND_URL
+        if (frontendUrl && !src.startsWith('http')) {
+          const publicUrl = `${frontendUrl}/api/files/${fileIdMatch[1]}`;
+          processedHtml = processedHtml.split(src).join(publicUrl);
+          console.log(`[Campaign Image] 🔗 Fallback: replaced relative /api/files/${fileIdMatch[1]} with public URL: ${publicUrl}`);
+        }
+        continue;
+      }
+
+      // 2. Check if src contains /uploads/
+      const uploadsMatch = src.match(/\/uploads\/(.+)/i);
+      if (uploadsMatch) {
+        const relPath = uploadsMatch[1];
+        const fullPath = path.resolve(path.join(uploadDir, relPath));
+        if (fs.existsSync(fullPath)) {
+          const fileBuf = fs.readFileSync(fullPath);
+          const base64Data = fileBuf.toString('base64');
+          const ext = path.extname(fullPath).toLowerCase();
+          const mime = ext === '.png' ? 'image/png' : ext === '.gif' ? 'image/gif' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+          const dataUri = `data:${mime};base64,${base64Data}`;
+          processedHtml = processedHtml.split(src).join(dataUri);
+          console.log(`[Campaign Image] ✅ Converted /uploads/${relPath} to inline Base64 (${fileBuf.length} bytes).`);
+          continue;
+        } else {
+          console.warn(`[Campaign Image] ⚠️ Upload file not found at: ${fullPath}`);
+        }
+      }
+
+      // 3. If relative path or localhost URL, replace with FRONTEND_URL
+      if (frontendUrl && (src.startsWith('/') || src.includes('localhost') || src.includes('127.0.0.1'))) {
+        let cleanSrc = src;
+        if (src.startsWith('http://localhost') || src.startsWith('http://127.0.0.1')) {
+          try {
+            const urlObj = new URL(src);
+            cleanSrc = urlObj.pathname + urlObj.search;
+          } catch {}
+        }
+        const fullUrl = `${frontendUrl}${cleanSrc.startsWith('/') ? '' : '/'}${cleanSrc}`;
+        processedHtml = processedHtml.split(src).join(fullUrl);
+        console.log(`[Campaign Image] 🔗 Replaced relative/localhost src with public URL: ${fullUrl}`);
+      }
+
+      // 4. External HTTPS URLs — leave as-is (already accessible by email clients)
+      if (src.startsWith('https://') || src.startsWith('http://')) {
+        console.log(`[Campaign Image] ℹ️ External image URL kept as-is: ${src.substring(0, 80)}...`);
+      }
+    } catch (err) {
+      console.error(`[Campaign Image] ❌ Error processing image src "${src}":`, err.message);
+    }
+  }
+
+  return processedHtml;
+}
+
 module.exports = {
   startCampaignScheduler,
   processCampaigns,
-  sendSingleCampaignEmail
+  sendSingleCampaignEmail,
+  sanitizeEmailSubject,
+  processBodyImages
 };

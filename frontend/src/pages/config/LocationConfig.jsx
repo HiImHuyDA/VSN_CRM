@@ -20,12 +20,22 @@ export default function LocationConfig() {
   const [editActive, setEditActive] = useState(true);
   const [showImport, setShowImport] = useState(false);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('csr_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
+
   useEffect(() => { fetchLocations(); }, []);
 
   const fetchLocations = async () => {
     setLoading(true);
     try {
-      const res = await fetch(window.location.origin + '/api/system-config/locations');
+      const res = await fetch(window.location.origin + '/api/system-config/locations', {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (data.success) setLocations(data.data);
     } catch { toast.error('Lỗi tải danh sách địa điểm'); }
@@ -51,7 +61,7 @@ export default function LocationConfig() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/locations', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ 
           id: editingId, 
           name: editName, 
@@ -74,7 +84,7 @@ export default function LocationConfig() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/locations/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ rows })
       });
       const data = await res.json();

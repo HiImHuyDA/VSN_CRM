@@ -31,31 +31,7 @@ router.get('/', async (req, res, next) => {
 router.get('/brand-projects', async (req, res, next) => {
   try {
     const pool = await getCsrPool();
-    const result = await pool.request().query(`
-      WITH LatestVersions AS (
-          SELECT 
-              Project_id,
-              ROW_NUMBER() OVER (PARTITION BY ParentId ORDER BY Version DESC) as rn
-          FROM CSR_Projects
-      )
-      SELECT 
-        p.Project_id,
-        p.CustomerName,
-        p.MeetingTopic,
-        p.SubmitterName,
-        t.FirstOnboardDate
-      FROM CSR_Projects p
-      INNER JOIN LatestVersions lv ON p.Project_id = lv.Project_id AND lv.rn = 1
-      INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
-      LEFT JOIN (
-          SELECT Project_id, MIN(OnboardDate) AS FirstOnboardDate
-          FROM CSR_Tasks
-          GROUP BY Project_id
-      ) t ON p.Project_id = t.Project_id
-      WHERE p.CustomerType = 'Brand'
-        AND s.TenTrangThai IN (N'BOD đã duyệt', N'Hoàn thành')
-      ORDER BY COALESCE(t.FirstOnboardDate, '2099-12-31') ASC, p.Project_id DESC
-    `);
+    const result = await pool.request().execute('usp_EmailCampaign_GetBrandProjects');
     res.json({ success: true, data: result.recordset || [] });
   } catch (err) {
     next(err);
@@ -66,14 +42,7 @@ router.get('/brand-projects', async (req, res, next) => {
 router.get('/logs', async (req, res, next) => {
   try {
     const pool = await getCsrPool();
-    const result = await pool.request().query(`
-      SELECT l.Id, l.TemplateId, l.ProjectId, l.SentAt, l.Status, l.ErrorMessage,
-             t.TemplateName, p.CustomerName, p.MeetingTopic
-      FROM CSR_EmailCampaignLogs l
-      LEFT JOIN CSR_EmailCampaignTemplates t ON l.TemplateId = t.Id
-      LEFT JOIN CSR_Projects p ON l.ProjectId = p.Project_id
-      ORDER BY l.SentAt DESC
-    `);
+    const result = await pool.request().execute('usp_EmailCampaign_GetLogs');
     res.json({ success: true, data: result.recordset || [] });
   } catch (err) {
     next(err);

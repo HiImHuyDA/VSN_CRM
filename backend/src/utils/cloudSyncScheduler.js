@@ -82,7 +82,7 @@ async function triggerCloudSync() {
 
     // 2. Tải toàn bộ tiêu chí đánh giá từ database nội bộ để làm từ điển đối chiếu theo tên
     const criteriaRes = await pool.request()
-      .query('SELECT Id, CriteriaName FROM [dbo].[CSR_ReviewCriteria] WHERE IsActive = 1');
+      .execute('usp_GetReviewCriteria');
     const criteriaMap = {};
     criteriaRes.recordset.forEach(c => {
       criteriaMap[c.CriteriaName.toLowerCase().trim()] = c.Id;
@@ -212,7 +212,7 @@ async function pushCriteriaToCloud(formId) {
     // 1. Lấy thông tin form
     const formRes = await pool.request()
       .input('Id', sql.Int, parseInt(formId))
-      .query('SELECT * FROM [dbo].[CSR_EvaluationForms] WHERE Id = @Id');
+      .execute('usp_GetEvaluationFormDetail');
 
     const form = formRes.recordset?.[0];
     if (!form) {
@@ -223,7 +223,7 @@ async function pushCriteriaToCloud(formId) {
     // 2. Lấy tiêu chí đang hoạt động thuộc form này
     const criteriaRes = await pool.request()
       .input('FormId', sql.Int, parseInt(formId))
-      .query('SELECT * FROM [dbo].[CSR_ReviewCriteria] WHERE FormId = @FormId AND IsActive = 1 ORDER BY SortOrder ASC');
+      .execute('usp_GetReviewCriteria');
 
     const criteria = (criteriaRes.recordset || []).map(c => ({
       name: c.CriteriaName,

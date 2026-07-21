@@ -185,13 +185,13 @@ router.get('/:projectId', async (req, res, next) => {
             // Check manager relationship
             const empRes = await pool.request()
               .input('MNV', sql.NVarChar(50), actorMNV)
-              .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+              .execute('usp_Employee_GetEmailByMNV');
             const actorEmail = empRes.recordset[0]?.Email;
             if (actorEmail) {
               const managerCheck = await pool.request()
                 .input('CreatorMNV', sql.NVarChar(50), project.SubmitterMNV)
                 .input('ManagerEmail', sql.NVarChar(200), actorEmail)
-                .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+                .execute('usp_Employee_CheckIsManager');
               if (managerCheck.recordset.length > 0) {
                 isAllowed = true;
               }
@@ -228,7 +228,7 @@ router.get('/:projectId', async (req, res, next) => {
       // Fetch manager email of actor
       const empRes = await pool.request()
         .input('MNV', sql.NVarChar(50), actorMNV)
-        .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+        .execute('usp_Employee_GetEmailByMNV');
       const actorEmail = empRes.recordset[0]?.Email;
 
       let isCreatorManager = false;
@@ -236,7 +236,7 @@ router.get('/:projectId', async (req, res, next) => {
         const managerCheck = await pool.request()
           .input('CreatorMNV', sql.NVarChar(50), project.SubmitterMNV)
           .input('ManagerEmail', sql.NVarChar(200), actorEmail)
-          .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+          .execute('usp_Employee_CheckIsManager');
         if (managerCheck.recordset.length > 0) {
           isCreatorManager = true;
         }
@@ -286,7 +286,7 @@ router.get('/:projectId', async (req, res, next) => {
     if (isCancelled) {
       const cancelLog = await pool.request()
         .input('ProjectId', sql.NVarChar(100), req.params.projectId)
-        .query("SELECT TOP 1 Reason FROM CSR_ApprovalLogs WHERE ProjectId = @ProjectId AND Action = 'Cancel' ORDER BY CreatedAt DESC");
+        .execute('usp_ApprovalLog_GetLastCancelReason');
       if (cancelLog.recordset.length > 0) {
         project.CancelReason = cancelLog.recordset[0].Reason;
       }
@@ -490,13 +490,13 @@ router.put('/:projectId', authenticateToken, async (req, res, next) => {
         // Check manager relation
         const empRes = await pool.request()
           .input('MNV', sql.NVarChar(50), actorMNV)
-          .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+          .execute('usp_Employee_GetEmailByMNV');
         const actorEmail = empRes.recordset[0]?.Email;
         if (actorEmail) {
           const managerCheck = await pool.request()
             .input('CreatorMNV', sql.NVarChar(50), oldSub.SubmitterMNV)
             .input('ManagerEmail', sql.NVarChar(200), actorEmail)
-            .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+            .execute('usp_Employee_CheckIsManager');
           if (managerCheck.recordset.length > 0) {
             canEdit = true;
           }
@@ -622,17 +622,7 @@ router.get('/recommend-restaurants', authenticateToken, async (req, res, next) =
     const pool = await getCsrPool();
     const result = await pool.request()
       .input('CustomerName', sql.NVarChar(200), customerName)
-      .query(`
-        SELECT t.MealOption, COUNT(t.Task_id) as BookCount
-        FROM CSR_Tasks t
-        INNER JOIN CSR_Projects p ON t.Project_id = p.Project_id
-        WHERE p.CustomerName = @CustomerName 
-          AND t.TaskName = N'Book nhà hàng ăn tối'
-          AND t.MealOption IS NOT NULL 
-          AND t.MealOption != ''
-        GROUP BY t.MealOption
-        ORDER BY BookCount DESC
-      `);
+      .execute('usp_GetDinnerRestaurants');
     res.json({ success: true, data: result.recordset || [] });
   } catch (err) {
     next(err);
@@ -651,13 +641,8 @@ router.post('/:projectId/cancel', authenticateToken, async (req, res, next) => {
 
     // Query status and submitter trước khi hủy để check quyền
     const oldSubReq = await pool.request()
-      .input('ProjectId', sql.NVarChar(50), projectId)
-      .query(`
-        SELECT s.TenTrangThai AS Status, p.SubmitterMNV
-        FROM CSR_Projects p
-        INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
-        WHERE p.Project_id = @ProjectId
-      `);
+      .input('ProjectId', sql.NVarChar(100), projectId)
+      .execute('usp_Submission_GetDetail');
     const oldStatusSub = oldSubReq.recordset[0];
     if (!oldStatusSub) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
@@ -679,13 +664,13 @@ router.post('/:projectId/cancel', authenticateToken, async (req, res, next) => {
         // Check manager relation
         const empRes = await pool.request()
           .input('MNV', sql.NVarChar(50), currentActorMNV)
-          .query('SELECT Email FROM CSR_Employees WHERE MNV = @MNV');
+          .execute('usp_Employee_GetEmailByMNV');
         const actorEmail = empRes.recordset[0]?.Email;
         if (actorEmail) {
           const managerCheck = await pool.request()
             .input('CreatorMNV', sql.NVarChar(50), oldStatusSub.SubmitterMNV)
             .input('ManagerEmail', sql.NVarChar(200), actorEmail)
-            .query('SELECT 1 FROM CSR_Employees WHERE MNV = @CreatorMNV AND ManagerEmail = @ManagerEmail');
+            .execute('usp_Employee_CheckIsManager');
           if (managerCheck.recordset.length > 0) {
             canCancel = true;
           }
@@ -726,7 +711,7 @@ router.post('/:projectId/cancel', authenticateToken, async (req, res, next) => {
     if (actorMNV) {
       const actorRes = await pool.request()
         .input('MNV', sql.NVarChar(50), actorMNV)
-        .query('SELECT FullName, Email, Role FROM CSR_Users WHERE MNV = @MNV');
+        .execute('usp_User_GetByMNV');
       if (actorRes.recordset.length > 0) {
         actorName = actorRes.recordset[0].FullName || actorName;
         actorEmail = actorRes.recordset[0].Email || '';
@@ -763,7 +748,7 @@ router.post('/:projectId/cancel', authenticateToken, async (req, res, next) => {
     // Lấy ParentId của đơn
     const verRes = await pool.request()
       .input('ProjectId', sql.NVarChar(100), projectId)
-      .query('SELECT ParentId FROM CSR_Projects WHERE Project_id = @ProjectId');
+      .execute('usp_Project_GetParentAndVersion');
     const parentId = verRes.recordset[0]?.ParentId || projectId;
 
     // Hủy các email lập lịch còn chờ gửi
@@ -802,13 +787,8 @@ router.post('/:projectId/approve', authenticateToken, async (req, res, next) => 
     
     // Fetch current status
     const statusReq = await pool.request()
-      .input('ProjectId', sql.NVarChar(50), req.params.projectId)
-      .query(`
-        SELECT s.TenTrangThai AS Status
-        FROM CSR_Projects p
-        INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
-        WHERE p.Project_id = @ProjectId
-      `);
+      .input('ProjectId', sql.NVarChar(100), req.params.projectId)
+      .execute('usp_Submission_GetDetail');
     const currentStatus = statusReq.recordset[0]?.Status;
     if (!currentStatus) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });
@@ -844,7 +824,7 @@ router.post('/:projectId/approve', authenticateToken, async (req, res, next) => 
     // Query CustomerType to check if it is a special type
     const projRes = await pool.request()
       .input('ProjectId', sql.NVarChar(100), req.params.projectId)
-      .query('SELECT CustomerType FROM CSR_Projects WHERE Project_id = @ProjectId');
+      .execute('usp_Project_GetParentAndVersion');
     const customerType = projRes.recordset?.[0]?.CustomerType;
     const isSpecialType = ['Partner', 'Supplier', 'Khách vãng lai', 'Ứng viên phỏng vấn'].includes(customerType);
 
@@ -892,13 +872,8 @@ router.post('/:projectId/reject', authenticateToken, async (req, res, next) => {
     
     // Fetch current status
     const statusReq = await pool.request()
-      .input('ProjectId', sql.NVarChar(50), req.params.projectId)
-      .query(`
-        SELECT s.TenTrangThai AS Status
-        FROM CSR_Projects p
-        INNER JOIN CSR_Statuses s ON p.StatusId = s.Id
-        WHERE p.Project_id = @ProjectId
-      `);
+      .input('ProjectId', sql.NVarChar(100), req.params.projectId)
+      .execute('usp_Submission_GetDetail');
     const currentStatus = statusReq.recordset[0]?.Status;
     if (!currentStatus) {
       return res.status(404).json({ success: false, error: 'Không tìm thấy đơn' });

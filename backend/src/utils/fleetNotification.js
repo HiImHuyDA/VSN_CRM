@@ -226,13 +226,8 @@ async function sendFactoryNotificationEmail(booking, pool) {
 
         // Query CSR_Locations to see if destination matches a location record
         const locRes = await pool.request()
-            .input('DestName', sql.NVarChar(100), destClean)
-            .query(`
-                SELECT [Name], [NotificationEmails] 
-                FROM [dbo].[CSR_Locations] 
-                WHERE [StatusId] = 1 
-                  AND ([Name] = @DestName OR @DestName LIKE '%' + [Name] + '%' OR [Name] LIKE '%' + @DestName + '%')
-            `);
+            .input('Name', sql.NVarChar(100), destClean)
+            .execute('usp_Location_GetNotificationEmails');
 
         const matchedLoc = locRes.recordset?.[0];
         if (!matchedLoc || !matchedLoc.NotificationEmails) {

@@ -20,12 +20,22 @@ export default function MeetingRoomConfig() {
   const [editActive, setEditActive] = useState(true);
   const [showImport, setShowImport] = useState(false);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('csr_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
+
   useEffect(() => { fetchRooms(); }, []);
 
   const fetchRooms = async () => {
     setLoading(true);
     try {
-      const res = await fetch(window.location.origin + '/api/system-config/lists?category=MeetingRoom');
+      const res = await fetch(window.location.origin + '/api/system-config/lists?category=MeetingRoom', {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (data.success) setRooms(data.data);
     } catch { toast.error('Lỗi tải dữ liệu'); }
@@ -40,7 +50,7 @@ export default function MeetingRoomConfig() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/lists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ id: editingId, category: 'MeetingRoom', name: editName, email: editEmail, isActive: editActive ? 1 : 0 })
       });
       const data = await res.json();
@@ -56,7 +66,7 @@ export default function MeetingRoomConfig() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/lists/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ rows, category: 'MeetingRoom' })
       });
       const data = await res.json();

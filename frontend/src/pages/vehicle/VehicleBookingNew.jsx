@@ -143,6 +143,26 @@ export default function VehicleBookingNew() {
       .catch(err => console.error('Lỗi tải lịch trình xe trong ngày:', err));
   };
 
+  const getDateString = (dt) => {
+    if (!dt) return '';
+    const d = new Date(dt);
+    if (isNaN(d.getTime())) return String(dt).slice(0, 10);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getVehicleSlotsForDate = (vehicleId, dateStr) => {
+    if (!vehicleId || !dateStr) return [];
+    const targetDate = getDateString(dateStr);
+    return vehicleSchedules.filter(s => {
+      if (s.VehicleId !== vehicleId) return false;
+      const slotDate = getDateString(s.DepartureTime);
+      return slotDate === targetDate;
+    });
+  };
+
   useEffect(() => {
     // Load Leaflet resources dynamically from CDN
     if (window.L) {
@@ -1123,7 +1143,11 @@ export default function VehicleBookingNew() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {vehiclesList.map(v => {
                     const isSelected = selectedVehicleId === v.Id;
-                    const busySlots = vehicleSchedules.filter(s => s.VehicleId === v.Id);
+                    const busySlots = getVehicleSlotsForDate(v.Id, departureTime);
+                    const approvedSlots = busySlots.filter(s => s.Status === 'Team Admin đã duyệt');
+                    const bookedPassengers = approvedSlots.reduce((sum, s) => sum + (Number(s.PassengerCount) || 0), 0);
+                    const totalSeats = Number(v.Seats) || 0;
+                    const remainingSeats = Math.max(0, totalSeats - bookedPassengers);
                     
                     return (
                       <div
@@ -1141,9 +1165,18 @@ export default function VehicleBookingNew() {
                               <span className="text-xs font-semibold text-primary uppercase tracking-wider">{v.Brand}</span>
                               <h4 className="text-base font-bold text-on-surface mt-0.5">{v.PlateNumber}</h4>
                             </div>
-                            <span className="px-2.5 py-1 bg-gray-100 text-[11px] font-bold text-gray-700 rounded-md">
-                              🚌 {v.Seats} chỗ
-                            </span>
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="px-2.5 py-1 bg-gray-100 text-[11px] font-bold text-gray-700 rounded-md">
+                                🚌 {v.Seats} chỗ
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                remainingSeats > 0
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  : 'bg-red-50 text-red-700 border border-red-200'
+                              }`}>
+                                Còn {remainingSeats} chỗ trống
+                              </span>
+                            </div>
                           </div>
                           
                           <div className="mt-2 pt-2 border-t border-border/60">
@@ -1159,7 +1192,7 @@ export default function VehicleBookingNew() {
                                     : 'N/A';
                                   return (
                                     <span key={sIdx} className="px-2 py-0.5 bg-red-50 border border-red-200 text-red-600 rounded text-[10px] font-semibold">
-                                      {startHour} - {endHour}
+                                      {startHour} - {endHour} ({slot.Status})
                                     </span>
                                   );
                                 })}
@@ -1464,7 +1497,11 @@ export default function VehicleBookingNew() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {vehiclesList.map(v => {
                         const isSelected = returnVehicleId === v.Id;
-                        const busySlots = vehicleSchedules.filter(s => s.VehicleId === v.Id);
+                        const busySlots = getVehicleSlotsForDate(v.Id, returnTime);
+                        const approvedSlots = busySlots.filter(s => s.Status === 'Team Admin đã duyệt');
+                        const bookedPassengers = approvedSlots.reduce((sum, s) => sum + (Number(s.PassengerCount) || 0), 0);
+                        const totalSeats = Number(v.Seats) || 0;
+                        const remainingSeats = Math.max(0, totalSeats - bookedPassengers);
                         
                         return (
                           <div
@@ -1482,13 +1519,22 @@ export default function VehicleBookingNew() {
                                   <span className="text-xs font-semibold text-primary uppercase tracking-wider">{v.Brand}</span>
                                   <h4 className="text-base font-bold text-on-surface mt-0.5">{v.PlateNumber}</h4>
                                 </div>
-                                <span className="px-2.5 py-1 bg-gray-100 text-[11px] font-bold text-gray-700 rounded-md">
-                                  🚌 {v.Seats} chỗ
-                                </span>
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="px-2.5 py-1 bg-gray-100 text-[11px] font-bold text-gray-700 rounded-md">
+                                    🚌 {v.Seats} chỗ
+                                  </span>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    remainingSeats > 0
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-red-50 text-red-700 border border-red-200'
+                                  }`}>
+                                    Còn {remainingSeats} chỗ trống
+                                  </span>
+                                </div>
                               </div>
                               
                               <div className="mt-2 pt-2 border-t border-border/60">
-                                <div className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Lịch bận hôm nay:</div>
+                                <div className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider mb-1">Lịch bận ngày về:</div>
                                 {busySlots.length > 0 ? (
                                   <div className="flex flex-wrap gap-1">
                                     {busySlots.map((slot, sIdx) => {
@@ -1500,7 +1546,7 @@ export default function VehicleBookingNew() {
                                         : 'N/A';
                                       return (
                                         <span key={sIdx} className="px-2 py-0.5 bg-red-50 border border-red-200 text-red-600 rounded text-[10px] font-semibold">
-                                          {startHour} - {endHour}
+                                          {startHour} - {endHour} ({slot.Status})
                                         </span>
                                       );
                                     })}

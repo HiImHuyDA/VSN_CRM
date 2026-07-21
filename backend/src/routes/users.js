@@ -130,8 +130,8 @@ router.post('/batch', async (req, res) => {
     try {
       // Kiểm tra xem User đã tồn tại theo MNV hay chưa
       const existingUserRes = await pool.request()
-        .input('MNV_Check', sql.NVarChar(50), mnv)
-        .query('SELECT UserId FROM [dbo].[CSR_Users] WHERE MNV = @MNV_Check');
+        .input('MNV', sql.NVarChar(50), mnv)
+        .execute('usp_User_CheckExistsByMNV');
       const existingUser = existingUserRes.recordset[0];
 
       let targetUserId = 0;

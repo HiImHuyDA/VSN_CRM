@@ -42,11 +42,22 @@ export default function TaskConfigPage() {
     fetchLocations();
   }, []);
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('csr_token');
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+  };
+
+  useEffect(() => { fetchLocations(); fetchEmployees(); }, []);
   useEffect(() => { fetchTasks(); }, [selectedDest]);
 
   const fetchLocations = async () => {
     try {
-      const res = await fetch(window.location.origin + '/api/system-config/locations');
+      const res = await fetch(window.location.origin + '/api/system-config/locations', {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (data.success) setLocations(data.data.filter(l => l.IsActive).map(l => l.Name));
     } catch {}
@@ -54,7 +65,9 @@ export default function TaskConfigPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch(window.location.origin + '/api/employees?q=');
+      const res = await fetch(window.location.origin + '/api/employees?q=', {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       setEmployees((data.data || []).map(e => ({ label: e.FullName, email: e.Email, value: e.MNV })));
     } catch {}
@@ -66,7 +79,9 @@ export default function TaskConfigPage() {
       const url = selectedDest
         ? `/api/system-config/task-configs?destination=${encodeURIComponent(selectedDest)}`
         : window.location.origin + '/api/system-config/task-configs';
-      const res = await fetch(url);
+      const res = await fetch(url, {
+        headers: getAuthHeaders()
+      });
       const data = await res.json();
       if (data.success) setTasks(data.data);
     } catch { toast.error('Lỗi tải cấu hình công việc'); }
@@ -98,7 +113,7 @@ export default function TaskConfigPage() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/task-configs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ id: editingId, ...form, isCompulsory: form.isCompulsory ? 1 : 0, isActive: form.isActive ? 1 : 0 })
       });
       const data = await res.json();
@@ -118,7 +133,7 @@ export default function TaskConfigPage() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/task-configs/copy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ fromDest: copyFromDest, toDest: selectedDest })
       });
       const data = await res.json();
@@ -136,7 +151,7 @@ export default function TaskConfigPage() {
     try {
       const res = await fetch(window.location.origin + '/api/system-config/task-configs/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ rows })
       });
       const data = await res.json();

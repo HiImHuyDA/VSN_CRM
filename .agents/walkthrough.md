@@ -69,9 +69,37 @@ Tài liệu này ghi lại các chỉnh sửa, cập nhật cấu trúc cơ sở
   - **To**: Danh sách email thuộc địa điểm nhà máy điểm đến (`NotificationEmails`).
   - **Cc**: Email người tạo phiếu + Email người đi cùng (`AttendeesEmail`) + Email nhóm `TeamAdmin`.
 
+### 📌 Tính Năng Hiển Thị Chỗ Trống & Khắc Phục Lỗi Trạng Thái Xe Khứ Hồi (`VehicleBookingNew.jsx`)
+- **Hiển Thị Số Chỗ Trống ("Còn X chỗ trống")**:
+  - Tính toán số chỗ trống thực tế = `Số chỗ xe (v.Seats)` − `Tổng số người đã đặt của các đơn có trạng thái Team Admin đã duyệt`.
+  - Hiển thị badge màu xanh lá "Còn X chỗ trống" (hoặc đỏ nếu đã hết chỗ) trên từng thẻ chọn xe.
+  - Chỉ cộng dồn số hành khách của các đơn có `Status = 'Team Admin đã duyệt'` theo đúng yêu cầu nghiệp vụ.
+- **Khắc Phục Lỗi Trùng Lịch Bận Giữa Các Ngày Khứ Hồi**:
+  - Sửa lỗi lọc lịch bận `busySlots`: Thay vì lọc toàn bộ lịch trong mảng `vehicleSchedules` mà không phân biệt ngày, hàm `getVehicleSlotsForDate` đã chuẩn hóa ngày theo múi giờ địa phương (`YYYY-MM-DD`).
+  - Đảm bảo thẻ xe ở **Thẻ 2 (Chiều đi)** chỉ hiển thị lịch bận của ngày đi, và thẻ xe ở **Thẻ 3 (Chiều về)** chỉ hiển thị lịch bận của ngày về, tránh trường hợp xe bị báo bận sai ở cả 2 chuyến khi chỉ bận 1 ngày.
+
+- **Migration 100 (`100_fix_vip_roundtrip_auto_approve.sql`)**:
+  - Cập nhật Stored Procedure `usp_Fleet_Booking_Create` và `usp_Fleet_Booking_Update` để đảm bảo logic tự động duyệt (Auto-Approve) đơn VIP chỉ xảy ra khi TẤT CẢ các chặng (cả chặng đi và chặng về) đều được chọn xe VIP đầy đủ.
+
+### 📌 Khắc Phục Lỗi Email Marketing Campaign (`campaignScheduler.js` & `EmailCampaignConfig.jsx`)
+- **Khắc Phục Lỗi Hiển Thị Thẻ HTML & Entity ở Tiêu Đề (Subject)**:
+  - Bổ sung hàm `sanitizeEmailSubject(subjectStr)`: Tự động bóc tách và loại bỏ tất cả các thẻ HTML (`<span>`, `<div>`,...) cùng các ký tự thực thể (`&nbsp;`, `&amp;`,...) trong Tiêu đề Email.
+  - Chuẩn hóa tiêu đề về chuỗi Plain Text sạch đẹp trước khi gửi qua Microsoft Graph API.
+  - Cập nhật `EmailCampaignConfig.jsx`: Tự động làm sạch tiêu đề khi người dùng lưu Mẫu Email Template.
+- **Khắc Phục Lỗi Hình Ảnh Không Tải Được (Broken Image `[x] Th`)**:
+  - Bổ sung hàm `processBodyImages(htmlBody, pool)`: Quét toàn bộ các thẻ `<img src="...">` trong nội dung Email.
+  - Đọc trực tiếp file ảnh cục bộ từ đĩa cứng server (`/api/files/:id` hoặc `/uploads/YYYY/MM/...`) và chuyển đổi (encode) tự động sang dạng **Base64 Data URI** (`data:image/jpeg;base64,...`).
+  - Đảm bảo tất cả các ứng dụng xem email (Outlook Desktop, Outlook Web, Gmail, iOS Mail,...) đều hiển thị hình ảnh 100% thành công mà không phụ thuộc vào đường dẫn tương đối hay kết nối `localhost`.
+
+### 📌 Sửa Lỗi HTTP 401 Unauthorized (`{"success":false,"error":"Thiếu token"}`) Ở Các Trang Cấu Hình
+- **Nguyên nhân**: Các trang danh mục cấu hình (`LocationConfig.jsx`, `TaskConfigPage.jsx`, `CustomerConfig.jsx`, `MeetingRoomConfig.jsx`, `RestaurantConfig.jsx`, `EmailCampaignConfig.jsx`) gọi lệnh `fetch(...)` nguyên bản của trình duyệt để thực hiện các thao tác POST/GET dữ liệu nhưng **thiếu header xác thực JWT Bearer Token** (`Authorization: Bearer <csr_token>`). Backend sử dụng middleware `authenticateToken` nên lập tức từ chối yêu cầu và trả về lỗi `401 Unauthorized - Thiếu token`.
+- **Khắc phục**: 
+  - Bổ sung hàm `getAuthHeaders()` ở tất cả các trang danh mục cấu hình hệ thống, tự động lấy token xác thực từ `localStorage.getItem('csr_token')` và đính kèm `Authorization: Bearer <token>` vào mọi yêu cầu `fetch(...)`.
+  - Giúp các tài khoản đã được phân quyền vào menu gửi dữ liệu cấu hình thành công 100% mà không bị lỗi xác thực token.
+
 ---
 
 ## 4. Kết quả kiểm tra & Build
 - Biên dịch Frontend bằng Vite: `npm run build` hoàn thành **thành công 100% không có lỗi**.
-- Kiểm tra trực tiếp hàm `sendFactoryNotificationEmail` với dữ liệu thực tế: Đã xác nhận gửi thành công qua Microsoft Graph API với danh sách To/Cc và HTML layout chính xác.
-- Tiến trình Node.js backend được reload qua PM2 và các migrations SQL Server đã chạy thành công.
+- Kiểm tra trực tiếp các trang cấu hình danh mục và email marketing: Đã gửi request đính kèm Bearer token chính xác.
+- Migration 100 đã chạy thành công trên SQL Server và tiến trình Node.js backend đã được reload qua PM2.

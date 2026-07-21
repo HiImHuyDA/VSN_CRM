@@ -206,8 +206,8 @@ router.post('/locations/batch', authenticateToken, checkConfigPermission, async 
       try {
         // Tìm xem địa điểm đã tồn tại theo tên chưa
         const checkRes = await pool.request()
-          .input('Name_Check', sql.NVarChar(100), name)
-          .query('SELECT Id FROM [dbo].[CSR_Locations] WHERE [Name] = @Name_Check');
+          .input('Name', sql.NVarChar(200), name)
+          .execute('usp_Location_CheckExistsByName');
         const existing = checkRes.recordset[0];
         const targetId = existing ? existing.Id : 0;
 
@@ -253,9 +253,9 @@ router.post('/task-configs/batch', authenticateToken, checkConfigPermission, asy
       try {
         // Tìm xem cấu hình công việc đã tồn tại tại địa điểm đó chưa
         const checkRes = await pool.request()
-          .input('Dest_Check', sql.NVarChar(100), dest)
-          .input('Task_Check', sql.NVarChar(200), taskName)
-          .query('SELECT Id FROM [dbo].[CSR_TaskConfig] WHERE [Destination] = @Dest_Check AND [TaskName] = @Task_Check');
+          .input('Destination', sql.NVarChar(200), dest)
+          .input('TaskName', sql.NVarChar(200), taskName)
+          .execute('usp_TaskConfig_CheckExists');
         const existing = checkRes.recordset[0];
         const targetId = existing ? existing.Id : 0;
 
@@ -317,9 +317,9 @@ router.post('/lists/batch', authenticateToken, checkConfigPermission, async (req
       try {
         // Tìm xem đã tồn tại mục cùng tên trong category đó chưa
         const checkRes = await pool.request()
-          .input('Cat_Check', sql.NVarChar(50), cat)
-          .input('Name_Check', sql.NVarChar(200), name)
-          .query('SELECT Id FROM [dbo].[CSR_ConfigLists] WHERE [Category] = @Cat_Check AND [Name] = @Name_Check');
+          .input('Category', sql.NVarChar(50), cat)
+          .input('Name', sql.NVarChar(200), name)
+          .execute('usp_ConfigList_CheckExists');
         const existing = checkRes.recordset[0];
         const targetId = existing ? existing.Id : 0;
 

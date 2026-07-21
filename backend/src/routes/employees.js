@@ -5,7 +5,7 @@ const { exec }  = require('child_process');
 const path      = require('path');
 const { getCsrPool, sql } = require('../config/database');
 
-const SYNC_SCRIPT = path.join(__dirname, '../../scripts/sync_employees.py');
+const SYNC_SCRIPT = path.join(__dirname, '../../scripts/maintenance/sync_employees.py');
 let isSyncing = false; // Tránh chạy 2 sync cùng lúc
 
 /**
@@ -107,8 +107,8 @@ router.post('/sync', async (req, res, next) => {
             try {
               // Kiểm tra xem User đã tồn tại theo MNV hay chưa (để tránh lỗi trùng lặp)
               const checkUser = await pool.request()
-                .input('MNV_Check', sql.NVarChar(50), emp.MNV)
-                .query('SELECT UserId FROM [dbo].[CSR_Users] WHERE MNV = @MNV_Check');
+                .input('MNV', sql.NVarChar(50), emp.MNV)
+                .execute('usp_User_CheckExistsByMNV');
               
               if (checkUser.recordset.length === 0) {
                 // Sử dụng chính MNV làm mật khẩu mặc định ban đầu

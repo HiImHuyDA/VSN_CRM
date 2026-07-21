@@ -31,10 +31,9 @@ async function processScheduledEmails() {
   const pool = await getCsrPool();
 
   // 1. Quét các email Pending có SendAt nhỏ hơn hoặc bằng thời điểm hiện tại
-  const res = await pool.request().query(`
-    SELECT * FROM CSR_ScheduledEmails
-    WHERE Status = 'Pending' AND SendAt <= GETDATE()
-  `);
+  const res = await pool.request()
+    .input('Now', sql.DateTime, new Date())
+    .execute('usp_ScheduledEmail_GetPending');
 
   const emailsToSend = res.recordset || [];
   if (emailsToSend.length === 0) {
@@ -62,7 +61,7 @@ async function processScheduledEmails() {
       // Lấy thêm ParentId và Version từ database
       const verRes = await pool.request()
         .input('ProjectId', sql.NVarChar(100), email.ProjectId)
-        .query('SELECT ParentId, Version FROM CSR_Projects WHERE Project_id = @ProjectId');
+        .execute('usp_Project_GetParentAndVersion');
       if (verRes.recordset.length > 0) {
         project.ParentId = verRes.recordset[0].ParentId;
         project.Version = verRes.recordset[0].Version;

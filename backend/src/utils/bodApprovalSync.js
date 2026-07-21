@@ -39,11 +39,7 @@ async function sendBODApprovalToSharePointQueue(submission, pool) {
     // 1. Truy vấn thông tin chi tiết đơn từ SQL Server để đảm bảo có đầy đủ dữ liệu
     const projectRes = await pool.request()
       .input('ProjectId', sql.NVarChar(100), projectId)
-      .query(`
-        SELECT Project_id, SubmitterMNV, SubmitterName, GuestReps, AgendaJsonData, CustomerType, SubmitDate, CustomerName, MeetingTopic 
-        FROM CSR_Projects 
-        WHERE Project_id = @ProjectId
-      `);
+      .execute('usp_Submission_GetDetail');
 
     const project = projectRes.recordset?.[0];
     if (!project) {
@@ -57,7 +53,8 @@ async function sendBODApprovalToSharePointQueue(submission, pool) {
     let bodEmail = process.env.BOD_EMAIL || '';
     if (!bodEmail) {
       const bodRes = await pool.request()
-        .query("SELECT Email FROM CSR_Users WHERE Role = 'BOD' AND Email IS NOT NULL");
+        .input('Role', sql.NVarChar(50), 'BOD')
+        .execute('usp_User_GetEmailsByRole');
       const emails = bodRes.recordset.map(r => r.Email.trim()).filter(Boolean);
       if (emails.length > 0) {
         bodEmail = emails.join(';');
@@ -71,7 +68,7 @@ async function sendBODApprovalToSharePointQueue(submission, pool) {
     if (project.SubmitterMNV) {
       const userRes = await pool.request()
         .input('MNV', sql.NVarChar(50), project.SubmitterMNV)
-        .query('SELECT Role, Department FROM CSR_Users WHERE MNV = @MNV');
+        .execute('usp_User_GetRoleAndDept');
       if (userRes.recordset.length > 0) {
         const u = userRes.recordset[0];
         teamName = u.Department || u.Role || 'PRD';
@@ -326,11 +323,7 @@ async function sendPRDApprovalToSharePointQueue(submission, pool) {
     // 1. Truy vấn thông tin chi tiết đơn từ SQL Server để đảm bảo có đầy đủ dữ liệu
     const projectRes = await pool.request()
       .input('ProjectId', sql.NVarChar(100), projectId)
-      .query(`
-        SELECT Project_id, SubmitterMNV, SubmitterName, GuestReps, AgendaJsonData, CustomerType, SubmitDate, CustomerName, MeetingTopic 
-        FROM CSR_Projects 
-        WHERE Project_id = @ProjectId
-      `);
+      .execute('usp_Submission_GetDetail');
 
     const project = projectRes.recordset?.[0];
     if (!project) {
@@ -343,7 +336,8 @@ async function sendPRDApprovalToSharePointQueue(submission, pool) {
     // 2. Tự động xác định email của PRD trong hệ thống
     let prdEmail = '';
     const prdRes = await pool.request()
-      .query("SELECT Email FROM CSR_Users WHERE Role = 'PRD' AND Email IS NOT NULL");
+      .input('Role', sql.NVarChar(50), 'PRD')
+      .execute('usp_User_GetEmailsByRole');
     const emails = prdRes.recordset.map(r => r.Email.trim()).filter(Boolean);
     if (emails.length > 0) {
       prdEmail = emails.join(';');
@@ -356,7 +350,7 @@ async function sendPRDApprovalToSharePointQueue(submission, pool) {
     if (project.SubmitterMNV) {
       const userRes = await pool.request()
         .input('MNV', sql.NVarChar(50), project.SubmitterMNV)
-        .query('SELECT Role, Department FROM CSR_Users WHERE MNV = @MNV');
+        .execute('usp_User_GetRoleAndDept');
       if (userRes.recordset.length > 0) {
         const u = userRes.recordset[0];
         teamName = u.Department || u.Role || 'PRD';
@@ -531,7 +525,7 @@ async function syncPRDApprovalResults() {
           if (row?.NewStatus === 'PRD đã duyệt') {
             const projRes = await pool.request()
               .input('ProjectId', sql.NVarChar(100), projectId)
-              .query('SELECT CustomerType FROM CSR_Projects WHERE Project_id = @ProjectId');
+              .execute('usp_Project_GetParentAndVersion');
             const customerType = projRes.recordset?.[0]?.CustomerType;
             const isSpecialType = ['Partner', 'Supplier', 'Khách vãng lai', 'Ứng viên phỏng vấn'].includes(customerType);
 
